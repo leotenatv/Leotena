@@ -10,6 +10,8 @@
     "start": "prisma migrate deploy && node src/index.js",
     "dev": "nodemon src/index.js",
     "seed": "node prisma/seed.js",
+    "reset-admin": "node prisma/reset-admin.js",
+    "clear-demo": "node prisma/clear-demo.js",
     "postinstall": "prisma generate"
   },
   "dependencies": {

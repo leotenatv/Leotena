@@ -1,4 +1,4 @@
-package com.example.supastream_flutter
+package com.ghettodevelopers.leotena
 
 import io.flutter.embedding.android.FlutterActivity
 

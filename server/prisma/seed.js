@@ -288,10 +288,11 @@ async function main() {
 
   const adminEmail = (process.env.ADMIN_EMAIL || 'admin@leotena.com').toLowerCase().trim();
   const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
   await prisma.adminUser.upsert({
     where: { email: adminEmail },
-    update: {},
-    create: { email: adminEmail, passwordHash: await bcrypt.hash(adminPassword, 10) },
+    update: { passwordHash },
+    create: { email: adminEmail, passwordHash },
   });
 
   for (let i = 0; i < CHANNELS.length; i++) {

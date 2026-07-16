@@ -7,28 +7,50 @@ class ContentResult {
   const ContentResult({required this.channels, required this.movies});
 }
 
+/// True when the admin row is on-demand content (filamu) rather than a live
+/// TV channel. Movies category always counts as VOD; also `/vod/` in the
+/// stream URL, or legacy VOD metadata on older rows.
+bool isVodChannelJson(Map<String, dynamic> json) {
+  final category = (json['category'] as String? ?? '').toLowerCase();
+  if (category == 'movies') return true;
+  final url = (json['url'] as String? ?? '').toLowerCase();
+  if (url.contains('/vod/')) return true;
+  final genre = json['genre'] as String?;
+  final description = json['description'] as String?;
+  final year = json['year'] as String?;
+  final duration = json['duration'] as String?;
+  return (genre != null && genre.isNotEmpty) ||
+      (description != null && description.isNotEmpty) ||
+      (year != null && year.isNotEmpty) ||
+      (duration != null && duration.isNotEmpty);
+}
+
 /// All the read-only calls the consumer app needs, plus device
 /// registration/status (the only writes this app ever makes).
 class ContentRepository {
   final ApiClient client;
   ContentRepository(this.client);
 
-  /// Single `/channels` fetch, split client-side: `category == 'movies'`
-  /// entries become [Movie]s (with VOD metadata), everything else stays a
-  /// [Channel] (live TV).
+  /// Single `/channels` fetch, split client-side into live [Channel]s and
+  /// on-demand [Movie]s (admin saves both in the same table).
   Future<ContentResult> fetchChannelsAndMovies() async {
     final raw = await client.get('/channels') as List<dynamic>;
     final channels = <Channel>[];
     final movies = <Movie>[];
     for (final item in raw) {
       final json = item as Map<String, dynamic>;
-      if (json['category'] == 'movies') {
+      if (isVodChannelJson(json)) {
         movies.add(Movie.fromJson(json));
       } else {
         channels.add(Channel.fromJson(json));
       }
     }
     return ContentResult(channels: channels, movies: movies);
+  }
+
+  Future<List<CarouselBanner>> fetchCarousel() async {
+    final raw = await client.get('/carousel') as List<dynamic>;
+    return raw.map((e) => CarouselBanner.fromJson(e as Map<String, dynamic>)).toList();
   }
 
   Future<List<ScheduleItem>> fetchSchedule() async {

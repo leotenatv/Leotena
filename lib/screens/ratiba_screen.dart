@@ -16,22 +16,124 @@ class RatibaScreen extends StatefulWidget {
 }
 
 class _RatibaScreenState extends State<RatibaScreen> {
-  int _activeDay = 2;
-  final Set<int> _reminders = {};
+  DateTime? _activeDay;
+  final Set<String> _reminders = {};
+  final _dayScrollCtrl = ScrollController();
+  bool _didAutoPick = false;
 
-  static const _days = [
-    ['Jmn', '26'],
-    ['Jmosi', '27'],
-    ['Leo', '28'],
-    ['Jmn', '29'],
-    ['Alh', '30'],
-    ['Iju', '01'],
+  static const _weekdayShort = [
+    'Jpili', // Sunday
+    'Jtatu', // Monday
+    'Jnn', // Tuesday
+    'Jtano', // Wednesday
+    'Alh', // Thursday
+    'Iju', // Friday
+    'Jmosi', // Saturday
   ];
+
+  static const _monthShort = [
+    'Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Ago', 'Sep', 'Okt', 'Nov', 'Des',
+  ];
+
+  /// Tanzania (EAT = UTC+3) wall-clock — matches admin schedule convention.
+  DateTime get _eatNow {
+    final utc = DateTime.now().toUtc();
+    return utc.add(const Duration(hours: 3));
+  }
+
+  DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Upcoming calendar days that actually have schedule items.
+  List<DateTime> _daysWithEvents(List<ScheduleItem> schedule) {
+    final today = _dateOnly(_eatNow);
+    final dates = <DateTime>{};
+    for (final s in schedule) {
+      final raw = s.date;
+      if (raw == null) continue;
+      final d = _dateOnly(raw);
+      if (!d.isBefore(today)) dates.add(d);
+    }
+    final sorted = dates.toList()..sort();
+    return sorted;
+  }
+
+  List<ScheduleItem> _itemsForDay(List<ScheduleItem> schedule, DateTime day) {
+    final items = schedule.where((s) {
+      final raw = s.date;
+      if (raw == null) return false;
+      return _sameDay(raw, day);
+    }).toList()
+      ..sort((a, b) {
+        final da = a.date ?? DateTime(0);
+        final db = b.date ?? DateTime(0);
+        return da.compareTo(db);
+      });
+    return items;
+  }
+
+  String _dayLabel(DateTime day) {
+    final today = _dateOnly(_eatNow);
+    if (_sameDay(day, today)) return 'Leo';
+    return _weekdayShort[day.weekday % 7];
+  }
+
+  String _eventDateLabel(DateTime? dt) {
+    if (dt == null) return '';
+    return '${dt.day} ${_monthShort[dt.month - 1]}';
+  }
+
+  void _pickDefaultDayIfNeeded(List<DateTime> days) {
+    if (days.isEmpty) {
+      if (_activeDay != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _activeDay = null);
+        });
+      }
+      return;
+    }
+    if (_activeDay != null && days.any((d) => _sameDay(d, _activeDay!))) return;
+    final today = _dateOnly(_eatNow);
+    final todayIdx = days.indexWhere((d) => _sameDay(d, today));
+    final next = todayIdx >= 0 ? days[todayIdx] : days.first;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() => _activeDay = next);
+      _scrollToActiveDay(days);
+    });
+  }
+
+  void _scrollToActiveDay(List<DateTime> days) {
+    if (_didAutoPick || _activeDay == null || !_dayScrollCtrl.hasClients) return;
+    final idx = days.indexWhere((d) => _sameDay(d, _activeDay!));
+    if (idx <= 0) {
+      _didAutoPick = true;
+      return;
+    }
+    _didAutoPick = true;
+    final offset = (idx * 71.0).clamp(0.0, _dayScrollCtrl.position.maxScrollExtent);
+    _dayScrollCtrl.animateTo(offset, duration: const Duration(milliseconds: 420), curve: Curves.easeOutCubic);
+  }
+
+  @override
+  void dispose() {
+    _dayScrollCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final r = R.of(context);
     final schedule = context.watch<AppState>().schedule;
+    final days = _daysWithEvents(schedule);
+    _pickDefaultDayIfNeeded(days);
+
+    final active = _activeDay ?? (days.isEmpty ? null : days.first);
+    final dayItems = active == null ? <ScheduleItem>[] : _itemsForDay(schedule, active);
+
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -45,45 +147,72 @@ class _RatibaScreenState extends State<RatibaScreen> {
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: BoxConstraints(maxWidth: r.maxContentWidth),
-          child: ListView(
-            padding: EdgeInsets.only(top: r.topContent, bottom: r.bottomNavClearance),
-            children: [
-              Padding(
-                padding: EdgeInsets.fromLTRB(r.pageGutter, 0, r.pageGutter, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Ratiba', style: AppTheme.heading(r.sp(26))),
-                    const SizedBox(height: 4),
-                    Text('Mipango ya vipindi na mechi',
-                        style: AppTheme.body(r.sp(13), color: AppColors.textSecondary)),
-                  ],
+          child: RefreshIndicator(
+            color: AppColors.green,
+            onRefresh: () => context.read<AppState>().refreshContent(),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.only(top: r.topContent, bottom: r.bottomNavClearance),
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(r.pageGutter, 0, r.pageGutter, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Ratiba', style: AppTheme.heading(r.sp(26))),
+                      const SizedBox(height: 4),
+                      Text('Mipango ya vipindi na mechi',
+                          style: AppTheme.body(r.sp(13), color: AppColors.textSecondary)),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: r.sp(72),
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(horizontal: r.pageGutter),
-                  itemCount: _days.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 9),
-                  itemBuilder: (_, i) => _dayChip(i, r),
-                ),
-              ),
-              SizedBox(height: r.sectionGap),
-              ...List.generate(schedule.length, (i) => _scheduleRow(schedule[i], i, r)),
-            ],
+                const SizedBox(height: 12),
+                if (days.isEmpty)
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(r.pageGutter, 40, r.pageGutter, 0),
+                    child: Center(
+                      child: Text(
+                        'Hakuna ratiba kwa sasa',
+                        style: AppTheme.body(r.sp(14), color: AppColors.textHint),
+                      ),
+                    ),
+                  )
+                else ...[
+                  SizedBox(
+                    height: r.sp(72),
+                    child: ListView.separated(
+                      controller: _dayScrollCtrl,
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.symmetric(horizontal: r.pageGutter),
+                      itemCount: days.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 9),
+                      itemBuilder: (_, i) => _dayChip(days[i], r),
+                    ),
+                  ),
+                  SizedBox(height: r.sectionGap),
+                  if (dayItems.isEmpty)
+                    Padding(
+                      padding: EdgeInsets.symmetric(horizontal: r.pageGutter, vertical: 24),
+                      child: Text(
+                        'Hakuna vipindi siku hii',
+                        style: AppTheme.body(r.sp(13), color: AppColors.textHint),
+                      ),
+                    )
+                  else
+                    ...List.generate(dayItems.length, (i) => _scheduleRow(dayItems[i], i, r)),
+                ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _dayChip(int i, R r) {
-    final active = i == _activeDay;
+  Widget _dayChip(DateTime day, R r) {
+    final active = _activeDay != null && _sameDay(day, _activeDay!);
     return GestureDetector(
-      onTap: () => setState(() => _activeDay = i),
+      onTap: () => setState(() => _activeDay = day),
       child: Container(
         width: r.sp(62),
         padding: EdgeInsets.symmetric(vertical: r.sp(12), horizontal: 8),
@@ -97,11 +226,19 @@ class _RatibaScreenState extends State<RatibaScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(_days[i][0],
-                style: AppTheme.body(r.sp(11),
-                    color: active ? Colors.white.withValues(alpha: 0.75) : AppColors.textSecondary, weight: FontWeight.w700)),
+            Text(
+              _dayLabel(day),
+              style: AppTheme.body(
+                r.sp(11),
+                color: active ? Colors.white.withValues(alpha: 0.75) : AppColors.textSecondary,
+                weight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(_days[i][1], style: AppTheme.heading(r.sp(19), color: active ? Colors.white : AppColors.textPrimary)),
+            Text(
+              '${day.day}'.padLeft(2, '0'),
+              style: AppTheme.heading(r.sp(19), color: active ? Colors.white : AppColors.textPrimary),
+            ),
           ],
         ),
       ),
@@ -109,7 +246,9 @@ class _RatibaScreenState extends State<RatibaScreen> {
   }
 
   Widget _scheduleRow(ScheduleItem item, int index, R r) {
-    final reminded = _reminders.contains(index);
+    final key = '${item.title}-${item.date?.toIso8601String() ?? index}';
+    final reminded = _reminders.contains(key);
+    final dateLabel = _eventDateLabel(item.date);
     return Padding(
       padding: EdgeInsets.fromLTRB(r.pageGutter, 0, r.pageGutter, 0),
       child: Row(
@@ -121,6 +260,10 @@ class _RatibaScreenState extends State<RatibaScreen> {
               children: [
                 Text(item.time, style: AppTheme.heading(r.sp(14))),
                 Text(item.ampm, style: AppTheme.body(r.sp(10), color: AppColors.textHint, weight: FontWeight.w700)),
+                if (dateLabel.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(dateLabel, style: AppTheme.body(r.sp(9), color: AppColors.textHint, weight: FontWeight.w700)),
+                ],
                 Container(
                   width: 2,
                   height: r.sp(72),
@@ -163,10 +306,15 @@ class _RatibaScreenState extends State<RatibaScreen> {
                             ],
                           ),
                           const SizedBox(height: 2),
-                          Text(item.subtitle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: AppTheme.body(r.sp(11.5), color: AppColors.textHint)),
+                          Text(
+                            [
+                              if (dateLabel.isNotEmpty) dateLabel,
+                              if (item.subtitle.isNotEmpty) item.subtitle,
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTheme.body(r.sp(11.5), color: AppColors.textHint),
+                          ),
                         ],
                       ),
                     ),
@@ -174,9 +322,9 @@ class _RatibaScreenState extends State<RatibaScreen> {
                     GestureDetector(
                       onTap: () => setState(() {
                         if (reminded) {
-                          _reminders.remove(index);
+                          _reminders.remove(key);
                         } else {
-                          _reminders.add(index);
+                          _reminders.add(key);
                         }
                       }),
                       child: Container(

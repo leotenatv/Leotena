@@ -42,7 +42,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void _autoSlide() {
     Future.delayed(const Duration(milliseconds: 3500), () {
       if (!mounted) return;
-      final next = (_banner + 1) % context.read<AppState>().banners.length;
+      final banners = context.read<AppState>().banners;
+      if (banners.isEmpty) {
+        _autoSlide();
+        return;
+      }
+      final next = (_banner + 1) % banners.length;
       _pageCtrl.animateToPage(next, duration: const Duration(milliseconds: 600), curve: Curves.easeInOut);
       _autoSlide();
     });
@@ -54,23 +59,32 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  void _requireSubscriptionOr(VoidCallback play) {
-    if (!context.read<AppState>().subscribed) {
-      PremiumLockModal.show(context);
-      return;
-    }
-    play();
+  /// Tanzania (EAT = UTC+3) wall-clock time for greetings.
+  DateTime get _eatNow {
+    final utc = DateTime.now().toUtc();
+    return utc.add(const Duration(hours: 3));
   }
 
-  /// Chaneli za Bure — free content, always playable.
+  String get _tanzaniaGreeting {
+    final h = _eatNow.hour;
+    if (h >= 5 && h < 12) return 'Habari za asubuhi';
+    if (h >= 12 && h < 16) return 'Habari za mchana';
+    if (h >= 16 && h < 19) return 'Habari za jioni';
+    return 'Habari za usiku';
+  }
+
   void _playMovie(Movie m) {
     context.read<AppState>().play(PlaybackSource.fromMovie(m));
     PlayerScreen.open(context);
   }
 
-  /// Category rows (Movies, Tamthilia, …) — premium; payment if not subscribed, else play now.
-  void _openPremiumMovie(Movie m) {
-    _requireSubscriptionOr(() => _playMovie(m));
+  void _openMovie(Movie m) {
+    final state = context.read<AppState>();
+    if (state.movieLocked(m)) {
+      PremiumLockModal.show(context);
+      return;
+    }
+    _playMovie(m);
   }
 
   void _openChannel(Channel c) {
@@ -91,31 +105,49 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final r = R.of(context);
+    final freeChannels = context.watch<AppState>().freeChannels;
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: r.maxContentWidth),
-        child: ListView(
-          padding: EdgeInsets.only(top: r.topContent, bottom: r.bottomNavClearance),
-          children: [
-            _header(r),
-            SizedBox(height: r.sectionGap),
-            _carousel(r),
-            SizedBox(height: r.sectionGap),
-            _chips(r),
-            SizedBox(height: r.sectionGap),
-            if (_show('zote') && _selectedCategory == 'zote') ...[
-              SectionHeader('Chaneli za Bure', onAction: () {}),
-              _continueRow(r),
+        child: RefreshIndicator(
+          color: AppColors.green,
+          onRefresh: () => context.read<AppState>().refreshContent(),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.only(top: r.topContent, bottom: r.bottomNavClearance),
+            children: [
+              _header(r),
               SizedBox(height: r.sectionGap),
+              _carousel(r),
+              SizedBox(height: r.sectionGap),
+              _chips(r),
+              SizedBox(height: r.sectionGap),
+              if (_show('zote') && _selectedCategory == 'zote' && freeChannels.isNotEmpty) ...[
+                SectionHeader('Chaneli za Bure', onAction: () {}),
+                _freeChannelsRow(r, freeChannels),
+                SizedBox(height: r.sectionGap),
+              ],
+              if (_show('football')) _channelWideRow(r, 'Football', _channelsBy('football')),
+              if (_show('tamthilia')) ...[
+                _channelWideRow(r, 'Tamthilia', _channelsBy('tamthilia')),
+                _posterRow(r, 'Tamthilia', context.watch<AppState>().moviesByCategory('tamthilia')),
+              ],
+              if (_show('movies')) _posterRow(r, 'Movies', context.watch<AppState>().moviesByCategory('movies')),
+              if (_show('burudani')) ...[
+                _channelWideRow(r, 'Burudani', _channelsBy('burudani')),
+                _posterRow(r, 'Burudani', context.watch<AppState>().moviesByCategory('burudani')),
+              ],
+              if (_show('wanyama')) ...[
+                _channelPosterRow(r, 'Wanyama', _channelsBy('wanyama')),
+                _posterRow(r, 'Wanyama', context.watch<AppState>().moviesByCategory('wanyama')),
+              ],
+              if (_show('katuni')) ...[
+                _channelPosterRow(r, 'Katuni', _channelsBy('katuni')),
+                _posterRow(r, 'Katuni', context.watch<AppState>().moviesByCategory('katuni')),
+              ],
             ],
-            if (_show('football')) _channelWideRow(r, 'Football', _channelsBy('football')),
-            if (_show('tamthilia')) _posterRow(r, 'Tamthilia', context.watch<AppState>().comedy),
-            if (_show('movies')) _posterRow(r, 'Movies', context.watch<AppState>().newlyAdded),
-            if (_show('burudani')) _channelWideRow(r, 'Burudani', _channelsBy('burudani')),
-            if (_show('wanyama')) _channelPosterRow(r, 'Wanyama', _channelsBy('wanyama')),
-            if (_show('katuni')) _channelPosterRow(r, 'Katuni', _channelsBy('katuni')),
-          ],
+          ),
         ),
       ),
     );
@@ -128,15 +160,9 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Habari za asubuhi 👋',
-                    style: AppTheme.body(r.sp(13), color: AppColors.textHint, weight: FontWeight.w700)),
-                Consumer<AppState>(
-                  builder: (_, s, __) => Text('Karibu, ${s.userName}', style: AppTheme.heading(r.sp(22))),
-                ),
-              ],
+            child: Text(
+              '$_tanzaniaGreeting 👋',
+              style: AppTheme.heading(r.sp(22)),
             ),
           ),
           GestureDetector(
@@ -173,6 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _carousel(R r) {
     final banners = context.watch<AppState>().banners;
+    if (banners.isEmpty) return const SizedBox.shrink();
     return Column(
       children: [
         SizedBox(
@@ -208,16 +235,29 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _bannerCard(R r, Movie m) {
+  void _openBanner(CarouselBanner banner) {
+    final movie = context.read<AppState>().movieForBanner(banner);
+    if (movie != null) {
+      _openMovie(movie);
+      return;
+    }
+  }
+
+  Widget _bannerCard(R r, CarouselBanner banner) {
     final radius = r.sp(26);
     return GestureDetector(
-      onTap: () => _playMovie(m),
+      onTap: () => _openBanner(banner),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius),
         child: Stack(
           fit: StackFit.expand,
           children: [
-            MovieArt(movie: m, borderRadius: BorderRadius.circular(radius), fit: BoxFit.fill),
+            PosterArt(
+              imageUrl: banner.imageUrl,
+              gradient: banner.gradient,
+              borderRadius: BorderRadius.circular(radius),
+              fit: BoxFit.fill,
+            ),
             DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -244,12 +284,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: AppTheme.body(r.sp(11), color: Colors.white, weight: FontWeight.w700)),
                   ),
                   SizedBox(height: r.sp(8)),
-                  Text(m.title, style: AppTheme.heading(r.sp(r.isCompact ? 20 : 25), color: Colors.white)),
-                  SizedBox(height: r.sp(6)),
-                  Text(
-                    '⭐ ${m.rating}',
-                    style: AppTheme.body(r.sp(12), color: Colors.white.withValues(alpha: 0.85), weight: FontWeight.w600),
-                  ),
+                  Text(banner.title, style: AppTheme.heading(r.sp(r.isCompact ? 20 : 25), color: Colors.white)),
                 ],
               ),
             ),
@@ -296,9 +331,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _continueRow(R r) {
-    final items = context.watch<AppState>().continueWatching;
-    const progs = [0.62, 0.28, 0.85];
+  Widget _freeChannelsRow(R r, List<Channel> items) {
     return SizedBox(
       height: r.continueRowHeight,
       child: ListView.separated(
@@ -306,13 +339,13 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: EdgeInsets.symmetric(horizontal: r.pageGutter),
         itemCount: items.length,
         separatorBuilder: (_, __) => SizedBox(width: r.sp(14)),
-        itemBuilder: (_, i) =>
-            ContinueCard(movie: items[i], progress: progs[i], onTap: () => _playMovie(items[i])),
+        itemBuilder: (_, i) => ChannelWideCard(channel: items[i], onTap: () => _openChannel(items[i])),
       ),
     );
   }
 
   Widget _posterRow(R r, String title, List<Movie> items) {
+    if (items.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -325,7 +358,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: EdgeInsets.symmetric(horizontal: r.pageGutter),
             itemCount: items.length,
             separatorBuilder: (_, __) => SizedBox(width: r.sp(14)),
-            itemBuilder: (_, i) => MoviePosterCard(movie: items[i], onTap: () => _openPremiumMovie(items[i])),
+            itemBuilder: (_, i) => MoviePosterCard(movie: items[i], onTap: () => _openMovie(items[i])),
           ),
         ),
       ],

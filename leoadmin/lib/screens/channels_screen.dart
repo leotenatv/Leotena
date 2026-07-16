@@ -99,14 +99,6 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
     final url = TextEditingController(text: channel.url);
     final thumbnail = TextEditingController(text: channel.imageUrl);
     final clearKey = TextEditingController(text: channel.clearKey);
-    final genre = TextEditingController(text: channel.genre ?? '');
-    final year = TextEditingController(text: channel.year ?? '');
-    final rating = TextEditingController(text: channel.rating ?? '');
-    final duration = TextEditingController(text: channel.duration ?? '');
-    final resolution = TextEditingController(text: channel.resolution ?? '');
-    final language = TextEditingController(text: channel.language ?? '');
-    final director = TextEditingController(text: channel.director ?? '');
-    final description = TextEditingController(text: channel.description ?? '');
     var category = kChannelCategories.contains(channel.category) ? channel.category : 'football';
     var drm = channel.drm;
     var premium = channel.premium;
@@ -139,86 +131,6 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                   .toList(),
               onChanged: (v) => setLocal(() => category = v ?? category),
             ),
-            if (category == 'movies') ...[
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        adminFieldLabel('Aina (Genre)'),
-                        adminTextField(controller: genre, hint: 'Vitendo'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        adminFieldLabel('Mwaka'),
-                        adminTextField(controller: year, hint: '2026', keyboardType: TextInputType.number),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        adminFieldLabel('Ukadiriaji'),
-                        adminTextField(controller: rating, hint: '8.9'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        adminFieldLabel('Muda'),
-                        adminTextField(controller: duration, hint: '2h 14m'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        adminFieldLabel('Ubora'),
-                        adminTextField(controller: resolution, hint: '4K'),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        adminFieldLabel('Lugha'),
-                        adminTextField(controller: language, hint: 'Kiswahili'),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              adminFieldLabel('Mkurugenzi'),
-              adminTextField(controller: director, hint: 'N. Mwakalinga'),
-              const SizedBox(height: 14),
-              adminFieldLabel('Maelezo'),
-              adminTextField(controller: description, hint: 'Maelezo mafupi ya filamu…', maxLines: 3),
-            ],
             const SizedBox(height: 14),
             adminFieldLabel('URL ya Kituo'),
             adminTextField(controller: url, hint: 'https://stream.leotena.com/live/…m3u8'),
@@ -251,6 +163,10 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text('Malipo', style: AdminTheme.body(14, color: AdminColors.textPrimary)),
+              subtitle: Text(
+                premium ? 'Premium — inahitaji malipo' : 'Bure — inaonekana kwenye Chaneli za Bure',
+                style: AdminTheme.body(12, color: AdminColors.textHint),
+              ),
               value: premium,
               activeThumbColor: AdminColors.green,
               onChanged: (v) => setLocal(() => premium = v),
@@ -284,14 +200,6 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                   premium: premium,
                   live: live,
                   active: active,
-                  genre: category == 'movies' ? genre.text.trim() : null,
-                  year: category == 'movies' ? year.text.trim() : null,
-                  rating: category == 'movies' ? rating.text.trim() : null,
-                  duration: category == 'movies' ? duration.text.trim() : null,
-                  resolution: category == 'movies' ? resolution.text.trim() : null,
-                  language: category == 'movies' ? language.text.trim() : null,
-                  director: category == 'movies' ? director.text.trim() : null,
-                  description: category == 'movies' ? description.text.trim() : null,
                 );
                 if (next.name.isEmpty) return;
                 setLocal(() {

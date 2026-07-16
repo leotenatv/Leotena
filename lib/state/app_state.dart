@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
@@ -15,6 +17,11 @@ import '../models/models.dart';
 class AppState extends ChangeNotifier {
   final ApiClient _api = ApiClient();
   late final ContentRepository _repo = ContentRepository(_api);
+
+  /// Silent background refresh so admin changes show up without a restart.
+  static const _autoRefreshInterval = Duration(seconds: 30);
+  Timer? _autoRefreshTimer;
+  bool _refreshing = false;
 
   // ---- Account ----
   bool _subscribed = false; // new users start FREE
@@ -34,6 +41,7 @@ class AppState extends ChangeNotifier {
   List<Movie> _movies = [];
   List<Channel> _channels = [];
   List<ScheduleItem> _schedule = [];
+  List<CarouselBanner> _banners = [];
   bool loadingContent = true;
   String? contentError;
 
@@ -54,22 +62,39 @@ class AppState extends ChangeNotifier {
   List<Movie> get movies => List.unmodifiable(_movies);
   List<Channel> get channels => List.unmodifiable(_channels);
   List<ScheduleItem> get schedule => List.unmodifiable(_schedule);
+  List<CarouselBanner> get banners => List.unmodifiable(_banners);
 
-  // ---- Curated home-screen rows, computed over live [movies] ----
-  List<Movie> get banners => _movies.take(3).toList();
-  List<Movie> get newlyAdded => _movies.reversed.take(4).toList();
-  List<Movie> get premiumFilms => _movies.where((m) => m.premium).take(4).toList();
+  // ---- Curated home-screen rows from admin-saved API data ----
+  List<Channel> get freeChannels =>
+      _channels.where((c) => !c.premium).toList();
+
+  List<Channel> channelsByCategory(String category) =>
+      _channels.where((c) => c.category == category).toList();
+
+  List<Movie> moviesByCategory(String category) =>
+      _movies.where((m) => m.category == category).toList();
+
+  List<Movie> get newlyAdded => List<Movie>.from(_movies).reversed.toList();
+
+  List<Movie> get premiumFilms => _movies.where((m) => m.premium).toList();
+
   List<Movie> get topRated {
     final sorted = List<Movie>.from(_movies)
       ..sort((a, b) => (double.tryParse(b.rating) ?? 0).compareTo(double.tryParse(a.rating) ?? 0));
-    return sorted.take(4).toList();
+    return sorted;
   }
 
-  List<Movie> get comedy =>
-      _movies.where((m) => m.genre.toLowerCase().contains('vichekesho')).take(4).toList();
-  List<Movie> get continueWatching => _movies.take(3).toList();
   List<Movie> related(String excludeId) =>
-      _movies.where((m) => m.id != excludeId).take(5).toList();
+      _movies.where((m) => m.id != excludeId).toList();
+
+  /// Resolve a carousel slide to a playable movie (title match), if any.
+  Movie? movieForBanner(CarouselBanner banner) {
+    final title = banner.title.trim().toLowerCase();
+    for (final m in _movies) {
+      if (m.title.trim().toLowerCase() == title) return m;
+    }
+    return null;
+  }
 
   Duration get remaining {
     final d = _subEnd.difference(DateTime.now());
@@ -84,19 +109,61 @@ class AppState extends ChangeNotifier {
     contentError = null;
     notifyListeners();
     try {
-      final content = await _repo.fetchChannelsAndMovies();
-      _channels = content.channels;
-      _movies = content.movies;
-      _schedule = await _repo.fetchSchedule();
-      final pkgs = await _repo.fetchPackages();
-      if (pkgs.isNotEmpty) _packages = pkgs;
-      _supportWhatsApp = await _repo.fetchSupportWhatsApp();
+      await _loadContent();
+      _startAutoRefresh();
     } on ApiException catch (e) {
       contentError = e.message;
     } finally {
       loadingContent = false;
       notifyListeners();
     }
+  }
+
+  /// Pull-to-refresh / auto-poll entry point. Does not flip [loadingContent]
+  /// so the UI stays put while data quietly updates.
+  Future<void> refreshContent() async {
+    if (_refreshing) return;
+    _refreshing = true;
+    try {
+      await _loadContent();
+      await refreshDeviceStatus();
+    } on ApiException {
+      // Keep last known content on transient failures.
+    } finally {
+      _refreshing = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadContent() async {
+    final results = await Future.wait([
+      _repo.fetchChannelsAndMovies(),
+      _repo.fetchCarousel(),
+      _repo.fetchSchedule(),
+      _repo.fetchPackages(),
+      _repo.fetchSupportWhatsApp(),
+    ]);
+    final content = results[0] as ContentResult;
+    _channels = content.channels;
+    _movies = content.movies;
+    _banners = results[1] as List<CarouselBanner>;
+    _schedule = results[2] as List<ScheduleItem>;
+    final pkgs = results[3] as List<SubscriptionPackage>;
+    if (pkgs.isNotEmpty) _packages = pkgs;
+    _supportWhatsApp = results[4] as String;
+  }
+
+  void _startAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(_autoRefreshInterval, (_) {
+      refreshContent();
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
   }
 
   /// Generates (once) and persists a stable per-install device id, then
@@ -118,10 +185,8 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Re-fetches this device's status from the server. This is the explicit
-  /// point through which an admin-granted premium becomes visible here (no
-  /// background polling) — called at boot and whenever the account screen
-  /// opens.
+  /// Re-fetches this device's status from the server. Called at boot,
+  /// whenever the account screen opens, and on each content auto-refresh.
   Future<void> refreshDeviceStatus() async {
     final id = _deviceId;
     if (id == null) return;
@@ -226,6 +291,8 @@ class AppState extends ChangeNotifier {
   }
 
   bool channelLocked(Channel c) => c.premium && !_subscribed;
+
+  bool movieLocked(Movie m) => m.premium && !_subscribed;
 
   Channel? get currentChannel {
     final id = nowChannelId;

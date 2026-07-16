@@ -35,6 +35,7 @@ ChannelDrm _drmFromJson(String? value) => ChannelDrm.values.firstWhere(
 class Movie {
   final String id;
   final String title;
+  final String category;
   final String genre;
   final String year;
   final String rating;
@@ -54,6 +55,7 @@ class Movie {
   const Movie({
     required this.id,
     required this.title,
+    required this.category,
     required this.genre,
     required this.year,
     required this.rating,
@@ -74,6 +76,7 @@ class Movie {
   factory Movie.fromJson(Map<String, dynamic> json) => Movie(
         id: json['id'] as String,
         title: json['name'] as String? ?? '',
+        category: json['category'] as String? ?? 'movies',
         genre: json['genre'] as String? ?? '',
         year: json['year'] as String? ?? '',
         rating: json['rating'] as String? ?? '',
@@ -89,6 +92,31 @@ class Movie {
         url: json['url'] as String? ?? '',
         drm: _drmFromJson(json['drm'] as String?),
         clearKey: json['clearKey'] as String? ?? '',
+      );
+}
+
+/// Home hero slide curated in LeoAdmin (`GET /carousel`).
+class CarouselBanner {
+  final String id;
+  final String title;
+  final String imageUrl;
+  final List<Color> gradient;
+  final int order;
+
+  const CarouselBanner({
+    required this.id,
+    required this.title,
+    required this.imageUrl,
+    required this.gradient,
+    required this.order,
+  });
+
+  factory CarouselBanner.fromJson(Map<String, dynamic> json) => CarouselBanner(
+        id: json['id'] as String,
+        title: json['title'] as String? ?? '',
+        imageUrl: json['imageUrl'] as String? ?? '',
+        gradient: gradientFromJson(json['gradient'] as List<dynamic>? ?? const []),
+        order: json['order'] as int? ?? 0,
       );
 }
 

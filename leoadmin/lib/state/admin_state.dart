@@ -58,6 +58,33 @@ class AdminState extends ChangeNotifier {
   int get activePlansCount => _pricingPlans.where((p) => p.active).length;
   int get premiumUserCount => _users.where((u) => u.hasPremiumAccess).length;
   int get liveChannelCount => _channels.where((c) => c.live && c.active).length;
+  int get successfulPaymentsCount => _subscriptions.where((s) => s.success).length;
+
+  /// Sum of successful payment amounts (digits only from strings like "TZS 5,000").
+  int get revenueTzs {
+    var total = 0;
+    for (final s in _subscriptions.where((s) => s.success)) {
+      total += int.tryParse(s.amount.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    }
+    return total;
+  }
+
+  String get revenueLabel {
+    final total = revenueTzs;
+    if (total >= 1000000) return 'TZS ${(total / 1000000).toStringAsFixed(1)}M';
+    if (total >= 1000) return 'TZS ${(total / 1000).toStringAsFixed(1)}K';
+    return 'TZS $total';
+  }
+
+  /// Recent successful payments for the dashboard feed (newest first, max 8).
+  List<SubscriptionRecord> get recentPayments =>
+      _subscriptions.where((s) => s.success).take(8).toList();
+
+  /// Channels ranked by viewer count for analytics.
+  List<AdminChannel> get topChannelsByViewers {
+    final list = List<AdminChannel>.from(_channels)..sort((a, b) => b.viewers.compareTo(a.viewers));
+    return list.take(8).toList();
+  }
 
   // ── Auth / session ───────────────────────────────────────────
   Future<void> tryRestoreSession() async {
@@ -88,7 +115,15 @@ class AdminState extends ChangeNotifier {
       notifyListeners();
       return true;
     } on ApiException catch (e) {
+      _loggedIn = false;
+      await _api.setToken(null);
       _authError = e.isAuthError ? 'Barua pepe au nenosiri sio sahihi' : 'Imeshindwa kuunganisha na seva: ${e.message}';
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _loggedIn = false;
+      await _api.setToken(null);
+      _authError = 'Imeshindwa kuunganisha na seva (${ApiClient.baseUrl}): $e';
       notifyListeners();
       return false;
     }

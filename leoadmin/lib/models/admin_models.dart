@@ -188,7 +188,9 @@ class AdminChannel {
   final String imageUrl;
   final List<Color> gradient;
 
-  // VOD-only metadata — nullable, only relevant/shown when category == 'movies'.
+  // Legacy VOD metadata (kept on the model / API for older rows).
+  // The channel editor no longer collects these — movies use the same
+  // fields as tamthilia.
   final String? genre;
   final String? year;
   final String? rating;

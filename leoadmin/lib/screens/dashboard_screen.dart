@@ -1,7 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../data/admin_repository.dart';
 import '../models/admin_models.dart';
 import '../state/admin_state.dart';
 import '../theme/admin_theme.dart';
@@ -13,8 +12,14 @@ class DashboardScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AdminState>();
-    const stats = AdminRepository.stats;
-    const weekly = AdminRepository.weeklyUsers;
+    final contentBars = <(String, double)>[
+      ('Vituo', state.channels.length.toDouble()),
+      ('LIVE', state.liveChannelCount.toDouble()),
+      ('Ratiba', state.schedule.length.toDouble()),
+      ('Slaidi', state.slides.length.toDouble()),
+      ('Bei', state.pricingPlans.length.toDouble()),
+      ('Malipo', state.successfulPaymentsCount.toDouble()),
+    ];
 
     return AdminPage(
       toolbar: const [],
@@ -23,7 +28,7 @@ class DashboardScreen extends StatelessWidget {
           _HeroBanner(
             users: state.users.length,
             premium: state.premiumUserCount,
-            revenue: stats.revenueTzs,
+            revenue: state.revenueLabel,
           ),
           const SizedBox(height: 20),
           LayoutBuilder(
@@ -34,7 +39,7 @@ class DashboardScreen extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Expanded(flex: 3, child: _GrowthChart(data: weekly)),
+                      Expanded(flex: 3, child: _ContentChart(data: contentBars)),
                       const SizedBox(width: 16),
                       Expanded(flex: 2, child: _QuickGrid(state: state)),
                     ],
@@ -43,7 +48,7 @@ class DashboardScreen extends StatelessWidget {
               }
               return Column(
                 children: [
-                  _GrowthChart(data: weekly),
+                  _ContentChart(data: contentBars),
                   const SizedBox(height: 16),
                   _QuickGrid(state: state),
                 ],
@@ -81,9 +86,9 @@ class DashboardScreen extends StatelessWidget {
                     gradient: const [Color(0xFF5B2A86), Color(0xFF9B59B6)],
                   ),
                   _KpiCard(
-                    label: 'Filamu',
-                    value: '${state.channels.where((c) => c.category == 'movies').length}',
-                    icon: Icons.movie_rounded,
+                    label: 'Malipo',
+                    value: '${state.successfulPaymentsCount}',
+                    icon: Icons.payments_rounded,
                     gradient: const [Color(0xFF0F2748), Color(0xFF1D4A82)],
                   ),
                 ],
@@ -91,9 +96,18 @@ class DashboardScreen extends StatelessWidget {
             },
           ),
           const SizedBox(height: 20),
-          Text('Shughuli za hivi karibuni', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
+          Text('Malipo ya hivi karibuni', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
           const SizedBox(height: 10),
-          ...AdminRepository.activities.map((a) => _ActivityRow(item: a)),
+          if (state.recentPayments.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                'Hakuna malipo bado.',
+                style: AdminTheme.body(13, color: AdminColors.textHint),
+              ),
+            )
+          else
+            ...state.recentPayments.map((s) => _PaymentRow(record: s)),
         ],
       ),
     );
@@ -126,87 +140,50 @@ class _HeroBanner extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Leotena Admin', style: AdminTheme.heading(26, color: Colors.white)),
-                    const SizedBox(height: 6),
-                    Text(
-                      '$users watumiaji · $premium premium',
-                      style: AdminTheme.body(14, color: Colors.white.withValues(alpha: 0.88)),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text('Mapato', style: AdminTheme.body(11, color: Colors.white70)),
-                    Text(revenue, style: AdminTheme.heading(16, color: Colors.white)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Row(
-            children: [
-              _HeroChip(icon: Icons.trending_up_rounded, label: '+12.5% watumiaji'),
-              SizedBox(width: 10),
-              _HeroChip(icon: Icons.star_rounded, label: '+8.3% premium'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  const _HeroChip({required this.icon, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(20),
-      ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 16),
-          const SizedBox(width: 6),
-          Text(label, style: AdminTheme.body(12, color: Colors.white, weight: FontWeight.w700)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Leotena Admin', style: AdminTheme.heading(26, color: Colors.white)),
+                const SizedBox(height: 6),
+                Text(
+                  '$users watumiaji · $premium premium',
+                  style: AdminTheme.body(14, color: Colors.white.withValues(alpha: 0.88)),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.18),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('Mapato', style: AdminTheme.body(11, color: Colors.white70)),
+                Text(revenue, style: AdminTheme.heading(16, color: Colors.white)),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _GrowthChart extends StatelessWidget {
-  final List<double> data;
-  const _GrowthChart({required this.data});
+class _ContentChart extends StatelessWidget {
+  final List<(String, double)> data;
+  const _ContentChart({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    final spots = List.generate(data.length, (i) => FlSpot(i.toDouble(), data[i]));
-    final maxY = data.reduce((a, b) => a > b ? a : b) * 1.15;
+    final maxY = data.map((e) => e.$2).fold<double>(0, (a, b) => a > b ? a : b);
+    final chartMax = maxY <= 0 ? 1.0 : maxY * 1.2;
+    final spots = List.generate(data.length, (i) => FlSpot(i.toDouble(), data[i].$2));
 
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 12),
@@ -218,14 +195,14 @@ class _GrowthChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Watumiaji (siku 7)', style: AdminTheme.body(15, color: AdminColors.textPrimary, weight: FontWeight.w700)),
+          Text('Yaliyomo (sasa)', style: AdminTheme.body(15, color: AdminColors.textPrimary, weight: FontWeight.w700)),
           const SizedBox(height: 16),
           SizedBox(
             height: 180,
             child: LineChart(
               LineChartData(
                 minY: 0,
-                maxY: maxY,
+                maxY: chartMax,
                 gridData: FlGridData(
                   show: true,
                   drawVerticalLine: false,
@@ -240,9 +217,9 @@ class _GrowthChart extends StatelessWidget {
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
-                      reservedSize: 36,
+                      reservedSize: 28,
                       getTitlesWidget: (v, _) => Text(
-                        '${(v / 1000).toStringAsFixed(0)}k',
+                        v.toInt().toString(),
                         style: AdminTheme.body(10, color: AdminColors.textHint),
                       ),
                     ),
@@ -251,10 +228,9 @@ class _GrowthChart extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       getTitlesWidget: (v, _) {
-                        const days = ['J1', 'J2', 'J3', 'J4', 'J5', 'J6', 'J7'];
                         final i = v.toInt();
-                        if (i < 0 || i >= days.length) return const SizedBox.shrink();
-                        return Text(days[i], style: AdminTheme.body(10, color: AdminColors.textHint));
+                        if (i < 0 || i >= data.length) return const SizedBox.shrink();
+                        return Text(data[i].$1, style: AdminTheme.body(9, color: AdminColors.textHint));
                       },
                     ),
                   ),
@@ -332,28 +308,28 @@ class _QuickGrid extends StatelessWidget {
             physics: const NeverScrollableScrollPhysics(),
             shrinkWrap: true,
             children: items.map((item) {
-                return Material(
-                  color: AdminColors.bg,
+              return Material(
+                color: AdminColors.bg,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  onTap: () => state.setSection(item.$3),
                   borderRadius: BorderRadius.circular(14),
-                  child: InkWell(
-                    onTap: () => state.setSection(item.$3),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(item.$2, color: item.$4, size: 22),
-                          const SizedBox(height: 8),
-                          Text(item.$1, style: AdminTheme.body(13, color: AdminColors.textPrimary, weight: FontWeight.w700)),
-                        ],
-                      ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(item.$2, color: item.$4, size: 22),
+                        const SizedBox(height: 8),
+                        Text(item.$1, style: AdminTheme.body(13, color: AdminColors.textPrimary, weight: FontWeight.w700)),
+                      ],
                     ),
                   ),
-                );
-              }).toList(),
-            ),
+                ),
+              );
+            }).toList(),
+          ),
         ],
       ),
     );
@@ -402,9 +378,9 @@ class _KpiCard extends StatelessWidget {
   }
 }
 
-class _ActivityRow extends StatelessWidget {
-  final ActivityItem item;
-  const _ActivityRow({required this.item});
+class _PaymentRow extends StatelessWidget {
+  final SubscriptionRecord record;
+  const _PaymentRow({required this.record});
 
   @override
   Widget build(BuildContext context) {
@@ -422,22 +398,29 @@ class _ActivityRow extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: item.color.withValues(alpha: 0.15),
+              color: AdminColors.green.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(Icons.circle, color: item.color, size: 10),
+            child: const Icon(Icons.payments_rounded, color: AdminColors.green, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.title, style: AdminTheme.body(14, color: AdminColors.textPrimary, weight: FontWeight.w700)),
-                Text(item.subtitle, style: AdminTheme.body(12, color: AdminColors.textSecondary)),
+                Text(record.user.isEmpty ? 'Mtumiaji' : record.user,
+                    style: AdminTheme.body(14, color: AdminColors.textPrimary, weight: FontWeight.w700)),
+                Text(record.packageName, style: AdminTheme.body(12, color: AdminColors.textSecondary)),
               ],
             ),
           ),
-          Text(item.time, style: AdminTheme.body(11, color: AdminColors.textHint)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(record.amount, style: AdminTheme.body(13, color: AdminColors.green, weight: FontWeight.w800)),
+              Text(record.date, style: AdminTheme.body(11, color: AdminColors.textHint)),
+            ],
+          ),
         ],
       ),
     );
