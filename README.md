@@ -1,17 +1,36 @@
-# leotena
+# Leotena
 
-A new Flutter project.
+Online TV — premium movies, series, and live channels streaming.
 
-## Getting Started
+This is a monorepo with three parts:
 
-This project is a starting point for a Flutter application.
+| Path | What it is | Deploys to |
+|---|---|---|
+| `lib/` (root) | **Leotena** — the consumer Flutter app. Fetches all content (channels, movies, schedule, pricing) from `server/`; never writes to it. | Android / iOS / web |
+| `leoadmin/` | **LeoAdmin** — the admin panel Flutter app. The only place content is created/edited. | Web (internal tool) |
+| `server/` | Node/Express/Prisma API backed by Postgres. Public read endpoints for the consumer app, JWT-authed admin endpoints for LeoAdmin. | Railway |
 
-A few resources to get you started if this is your first Flutter project:
+## Backend (`server/`)
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+cd server
+npm install
+npx prisma migrate deploy
+npm run seed   # first time only
+npm run dev
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+See `server/.env.example` for required environment variables.
+
+### Deploying on Railway from this repo
+
+When connecting this repo to a Railway service, set the service's **root directory to `server`** (Railway dashboard → service → Settings → Source) — the backend is a subdirectory of this monorepo, not the repo root.
+
+## Flutter apps
+
+```bash
+flutter pub get
+flutter run --dart-define=API_BASE_URL=https://your-backend-url
+```
+
+Same for `leoadmin/`.
