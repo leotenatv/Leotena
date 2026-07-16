@@ -4,10 +4,11 @@ import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../state/app_state.dart';
 import '../models/models.dart';
+import '../utils/payment_voices.dart';
 import '../widgets/common.dart';
 
 /// Centered animated success modal (no native dialogs / alerts anywhere).
-class SuccessModal extends StatelessWidget {
+class SuccessModal extends StatefulWidget {
   final String title;
   final String message;
   final String buttonLabel;
@@ -18,20 +19,48 @@ class SuccessModal extends StatelessWidget {
     this.buttonLabel = 'Endelea Kutazama',
   });
 
-  static Future<void> show(BuildContext context,
-      {required String title, required String message, String buttonLabel = 'Endelea Kutazama'}) {
+  static Future<void> show(
+    BuildContext context, {
+    required String title,
+    required String message,
+    String buttonLabel = 'Endelea Kutazama',
+  }) {
     return showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'success',
-      barrierColor: const Color(0xFF0F2748).withOpacity(0.55),
+      barrierColor: const Color(0xFF0F2748).withValues(alpha: 0.55),
       transitionDuration: const Duration(milliseconds: 320),
-      pageBuilder: (_, __, ___) => SuccessModal(title: title, message: message, buttonLabel: buttonLabel),
+      pageBuilder: (_, __, ___) => SuccessModal(
+        title: title,
+        message: message,
+        buttonLabel: buttonLabel,
+      ),
       transitionBuilder: (_, anim, __, child) => ScaleTransition(
         scale: CurvedAnimation(parent: anim, curve: Curves.easeOutBack),
         child: FadeTransition(opacity: anim, child: child),
       ),
     );
+  }
+
+  @override
+  State<SuccessModal> createState() => _SuccessModalState();
+}
+
+class _SuccessModalState extends State<SuccessModal> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await PaymentVoices.playAsset(PaymentVoices.successAsset);
+    });
+  }
+
+  @override
+  void dispose() {
+    PaymentVoices.stop();
+    super.dispose();
   }
 
   @override
@@ -62,13 +91,19 @@ class SuccessModal extends StatelessWidget {
                   child: const Icon(Icons.check_rounded, color: Colors.white, size: 44),
                 ),
                 const SizedBox(height: 18),
-                Text(title, style: AppTheme.heading(22), textAlign: TextAlign.center),
+                Text(widget.title, style: AppTheme.heading(22), textAlign: TextAlign.center),
                 const SizedBox(height: 8),
-                Text(message,
+                Text(widget.message,
                     textAlign: TextAlign.center,
                     style: AppTheme.body(13, color: AppColors.textSecondary)),
                 const SizedBox(height: 20),
-                PrimaryButton(label: buttonLabel, onTap: () => Navigator.of(context).pop()),
+                PrimaryButton(
+                  label: widget.buttonLabel,
+                  onTap: () async {
+                    await PaymentVoices.stop();
+                    if (context.mounted) Navigator.of(context).pop();
+                  },
+                ),
               ],
             ),
           ),
@@ -88,7 +123,7 @@ class PaymentSheet extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      barrierColor: const Color(0xFF0F2748).withOpacity(0.5),
+      barrierColor: const Color(0xFF0F2748).withValues(alpha: 0.5),
       builder: (_) => PaymentSheet(packages: packages),
     );
   }
@@ -106,16 +141,18 @@ class _PaymentSheetState extends State<PaymentSheet> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final state = context.read<AppState>();
       if (state.userName != 'Mtumiaji') _nameCtrl.text = state.userName;
       if (state.phoneNumber.isNotEmpty) _phoneCtrl.text = state.phoneNumber;
+      await PaymentVoices.playAsset(PaymentVoices.packageAsset);
     });
   }
 
   @override
   void dispose() {
+    PaymentVoices.stop();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
     super.dispose();
@@ -126,13 +163,16 @@ class _PaymentSheetState extends State<PaymentSheet> {
     final phone = _phoneCtrl.text.trim();
     if (name.isEmpty || phone.isEmpty) {
       setState(() => _error = 'Tafadhali jaza jina na nambari ya simu');
+      PaymentVoices.playAsset(PaymentVoices.detailsAsset);
       return;
     }
     if (phone.length < 9) {
       setState(() => _error = 'Nambari ya simu si sahihi');
+      PaymentVoices.playAsset(PaymentVoices.detailsAsset);
       return;
     }
     context.read<AppState>().activatePackage(selectedPkg, name: name, phone: phone);
+    PaymentVoices.stop();
     Navigator.of(context).pop();
     SuccessModal.show(
       context,
@@ -151,6 +191,7 @@ class _PaymentSheetState extends State<PaymentSheet> {
       controller: controller,
       keyboardType: keyboardType,
       style: AppTheme.body(14.5, color: AppColors.textPrimary, weight: FontWeight.w600),
+      cursorColor: AppColors.navy,
       onChanged: (_) {
         if (_error != null) setState(() => _error = null);
       },
@@ -159,8 +200,19 @@ class _PaymentSheetState extends State<PaymentSheet> {
         labelStyle: AppTheme.body(13, color: AppColors.textHint),
         prefixIcon: Icon(icon, color: AppColors.navyMid, size: 20),
         filled: true,
-        fillColor: AppColors.section,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+        fillColor: Colors.white,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFD6E8F6), width: 1.4),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: AppColors.green, width: 1.8),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: const BorderSide(color: Color(0xFFD6E8F6)),
+        ),
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       ),
     );
@@ -228,7 +280,7 @@ class _PaymentSheetState extends State<PaymentSheet> {
                     duration: const Duration(milliseconds: 180),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
-                      color: on ? AppColors.green.withOpacity(0.06) : AppColors.section,
+                      color: on ? AppColors.green.withValues(alpha: 0.06) : AppColors.section,
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(color: on ? AppColors.green : Colors.transparent, width: 2),
                     ),

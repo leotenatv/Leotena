@@ -268,10 +268,7 @@ class PlaybackSource {
   final bool isChannel;
   final String? channelId;
   final String? imageUrl;
-  /// Audio language codes (`sw`, `en`). Nullable for hot-reload of older instances.
-  final List<String>? languages;
-  /// Real stream data, carried through for a future real player — the
-  /// current player screen is still simulated and does not read these yet.
+  /// Real stream data consumed by the Shaka web player.
   final String url;
   final ChannelDrm drm;
   final String clearKey;
@@ -283,32 +280,18 @@ class PlaybackSource {
     required this.isChannel,
     this.channelId,
     this.imageUrl,
-    this.languages,
     this.url = '',
     this.drm = ChannelDrm.none,
     this.clearKey = '',
   });
 
-  /// Safe list — defaults to Kiswahili + English when missing (e.g. after hot reload).
-  List<String> get audioLanguages {
-    final langs = languages;
-    if (langs == null || langs.isEmpty) return const ['sw', 'en'];
-    return langs;
-  }
-
   factory PlaybackSource.fromMovie(Movie m) {
-    final langs = <String>{'sw'};
-    final lang = m.language.toLowerCase();
-    if (lang.contains('eng') || lang.contains('en')) langs.add('en');
-    // Most Leotena titles ship with an English track as well.
-    if (lang.contains('swahili') || lang.contains('kiswahili')) langs.add('en');
     return PlaybackSource(
       title: m.title,
       subtitle: 'Filamu • ${m.year}',
       gradient: m.gradient,
       isChannel: false,
       imageUrl: m.imageUrl,
-      languages: langs.toList(),
       url: m.url,
       drm: m.drm,
       clearKey: m.clearKey,
@@ -322,7 +305,6 @@ class PlaybackSource {
         isChannel: true,
         channelId: c.id,
         imageUrl: c.imageUrl,
-        languages: const ['sw', 'en'],
         url: c.url,
         drm: c.drm,
         clearKey: c.clearKey,

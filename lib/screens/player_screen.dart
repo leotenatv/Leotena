@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../models/models.dart';
 import '../widgets/common.dart';
 import '../widgets/channel_art.dart';
+import '../widgets/web_stream_player.dart';
 import '../app_route_observer.dart';
 import '../widgets/premium_lock_modal.dart';
 
@@ -31,22 +32,27 @@ class PlayerScreen extends StatefulWidget {
 
 class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver, RouteAware {
   bool _controls = true;
-  bool _playing = true;
+  bool _playing = false;
   bool _buffering = true;
-  double _progress = 0.32;
-  /// Default audio language: Kiswahili.
+  double _position = 0;
+  double _duration = 0;
   String _lang = 'sw';
-  /// Default stream quality.
-  String _quality = '360p';
-  Timer? _tick;
+  String _quality = 'Auto';
+  List<String> _languages = const [];
+  List<String> _qualities = const ['Auto'];
+  String? _playerError;
+  int _reloadToken = 0;
+  final _streamController = WebStreamController();
   Timer? _hideTimer;
 
   static const _langLabels = <String, String>{
     'sw': 'Kiswahili',
     'en': 'English',
+    'fr': 'Français',
+    'ar': 'العربية',
+    'pt': 'Português',
+    'es': 'Español',
   };
-
-  static const _qualities = ['240p', '360p', '480p', '720p', '1080p'];
 
   void _enterLandscapeMode() {
     SystemChrome.setPreferredOrientations([
@@ -61,10 +67,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _enterLandscapeMode();
-    _startBuffer();
-    _tick = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      if (_playing && !_buffering && mounted) setState(() => _progress = (_progress + 0.0025).clamp(0, 1));
-    });
     _scheduleHide();
   }
 
@@ -90,9 +92,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   void _startBuffer() {
-    setState(() => _buffering = true);
-    Future.delayed(const Duration(milliseconds: 1100), () {
-      if (mounted) setState(() => _buffering = false);
+    setState(() {
+      _buffering = true;
+      _playing = false;
+      _position = 0;
+      _duration = 0;
+      _quality = 'Auto';
+      _qualities = const ['Auto'];
+      _languages = const [];
+      _playerError = null;
+      _reloadToken++;
     });
   }
 
@@ -112,7 +121,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   void dispose() {
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
-    _tick?.cancel();
     _hideTimer?.cancel();
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
@@ -125,8 +133,14 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   }
 
   String _fmt(double seconds) {
+    if (!seconds.isFinite || seconds < 0) return '0:00';
     final s = seconds.floor();
-    return '${(s ~/ 60)}:${(s % 60).toString().padLeft(2, '0')}';
+    final hours = s ~/ 3600;
+    final minutes = (s % 3600) ~/ 60;
+    final secs = (s % 60).toString().padLeft(2, '0');
+    return hours > 0
+        ? '$hours:${minutes.toString().padLeft(2, '0')}:$secs'
+        : '$minutes:$secs';
   }
 
   void _exit() => Navigator.of(context).maybePop();
@@ -134,7 +148,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Future<void> _openSwitcher() async {
     await ChannelSwitcherSheet.show(context, onSwitched: () {
       _startBuffer();
-      setState(() => _lang = 'sw');
     });
     if (mounted) _enterLandscapeMode();
   }
@@ -143,18 +156,13 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _hideTimer?.cancel();
     final picked = await LanguagePickerSheet.show(
       context,
-      languages: src.audioLanguages,
+      languages: _languages,
       selected: _lang,
     );
     if (!mounted) return;
     if (picked != null && picked != _lang) {
-      setState(() {
-        _lang = picked;
-        _buffering = true;
-      });
-      Future.delayed(const Duration(milliseconds: 700), () {
-        if (mounted) setState(() => _buffering = false);
-      });
+      setState(() => _buffering = true);
+      await _streamController.setLanguage(picked);
     }
     _enterLandscapeMode();
     _scheduleHide();
@@ -169,13 +177,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     );
     if (!mounted) return;
     if (picked != null && picked != _quality) {
-      setState(() {
-        _quality = picked;
-        _buffering = true;
-      });
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (mounted) setState(() => _buffering = false);
-      });
+      setState(() => _buffering = true);
+      await _streamController.setQuality(picked);
     }
     _enterLandscapeMode();
     _scheduleHide();
@@ -202,19 +205,10 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final src = state.nowPlaying;
-    const double dur = 134;
 
     if (src == null) {
       // Defensive: nothing to play.
       return const Scaffold(backgroundColor: AppColors.navyDeep);
-    }
-
-    if (!src.audioLanguages.contains(_lang)) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() => _lang = src.audioLanguages.contains('sw') ? 'sw' : src.audioLanguages.first);
-        }
-      });
     }
 
     return Scaffold(
@@ -225,25 +219,59 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Video surface.
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 600),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    MediaBackdrop(imageUrl: src.imageUrl, gradient: src.gradient),
-                    Center(
-                      child: _buffering
-                          ? const SizedBox(
-                              width: 54,
-                              height: 54,
-                              child: CircularProgressIndicator(strokeWidth: 4, color: AppColors.green),
-                            )
-                          : null,
-                    ),
-                  ],
-                ),
+              // Real Shaka web-player surface using the clicked item's URL.
+              WebStreamPlayer(
+                key: ValueKey('${src.channelId ?? src.title}|${src.url}|$_reloadToken'),
+                source: src,
+                controller: _streamController,
+                onState: ({
+                  bool? playing,
+                  bool? buffering,
+                  double? position,
+                  double? duration,
+                }) {
+                  if (!mounted) return;
+                  setState(() {
+                    if (playing != null) _playing = playing;
+                    if (buffering != null) _buffering = buffering;
+                    if (position != null) _position = position;
+                    if (duration != null) _duration = duration;
+                  });
+                },
+                onQualities: (items) {
+                  if (!mounted) return;
+                  setState(() => _qualities = items.isEmpty ? const ['Auto'] : items);
+                },
+                onLanguages: (items) {
+                  if (!mounted) return;
+                  setState(() => _languages = items);
+                },
+                onQualityChanged: (value) {
+                  if (mounted) setState(() => _quality = value);
+                },
+                onLanguageChanged: (value) {
+                  if (mounted) setState(() => _lang = value);
+                },
+                onError: (message) {
+                  if (!mounted) return;
+                  setState(() {
+                    _buffering = false;
+                    _playing = false;
+                    _playerError = message;
+                  });
+                },
               ),
+
+              if (_buffering && _playerError == null)
+                const Center(
+                  child: SizedBox(
+                    width: 54,
+                    height: 54,
+                    child: CircularProgressIndicator(strokeWidth: 4, color: AppColors.green),
+                  ),
+                ),
+
+              if (_playerError != null) _errorOverlay(),
 
               // Controls overlay.
               AnimatedOpacity(
@@ -269,7 +297,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       children: [
                         _topBar(src),
                         _centerTransport(),
-                        _bottomBar(src, dur),
+                        _bottomBar(src),
                       ],
                     ),
                   ),
@@ -316,24 +344,27 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.skip_previous_rounded, color: Colors.white, size: 34),
-          const SizedBox(width: 36),
           GestureDetector(
-            onTap: () => setState(() => _playing = !_playing),
+            onTap: () async {
+              if (_playing) {
+                await _streamController.pause();
+              } else {
+                await _streamController.play();
+              }
+              _scheduleHide();
+            },
             child: Container(
               width: 74, height: 74,
               decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.16), shape: BoxShape.circle),
               child: Icon(_playing ? Icons.pause_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 40),
             ),
           ),
-          const SizedBox(width: 36),
-          const Icon(Icons.skip_next_rounded, color: Colors.white, size: 34),
         ],
       ),
     );
   }
 
-  Widget _bottomBar(PlaybackSource src, double dur) {
+  Widget _bottomBar(PlaybackSource src) {
     return Align(
       alignment: Alignment.bottomCenter,
       child: Padding(
@@ -360,7 +391,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
               ])
             else
               Row(children: [
-                Text(_fmt(_progress * dur),
+                Text(_fmt(_position),
                     style: AppTheme.body(11.5, color: Colors.white, weight: FontWeight.w700)),
                 const SizedBox(width: 11),
                 Expanded(
@@ -373,24 +404,33 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       overlayShape: SliderComponentShape.noOverlay,
                       thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
                     ),
-                    child: Slider(value: _progress, onChanged: (v) => setState(() => _progress = v)),
+                    child: Slider(
+                      value: _duration > 0 ? _position.clamp(0, _duration) : 0,
+                      max: _duration > 0 ? _duration : 1,
+                      onChanged: _duration > 0
+                          ? (value) {
+                              setState(() => _position = value);
+                              _streamController.seek(value);
+                            }
+                          : null,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 11),
-                Text(_fmt(dur), style: AppTheme.body(11.5, color: Colors.white.withValues(alpha: 0.6), weight: FontWeight.w700)),
+                Text(_fmt(_duration), style: AppTheme.body(11.5, color: Colors.white.withValues(alpha: 0.6), weight: FontWeight.w700)),
               ]),
             const SizedBox(height: 12),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [
-                if (src.audioLanguages.length > 1)
+                if (_languages.length > 1)
                   _tool(
                     Icons.translate_rounded,
                     _langLabels[_lang] ?? 'Kiswahili',
                     () => _openLanguagePicker(src),
                   ),
-                _tool(Icons.high_quality_rounded, _quality, _openQualityPicker),
-                _tool(Icons.speed_rounded, '1.0x', () {}),
+                if (_qualities.length > 1)
+                  _tool(Icons.high_quality_rounded, _quality, _openQualityPicker),
                 _tool(Icons.live_tv_rounded, src.isChannel ? 'Badili Kituo' : 'Vituo', _openSwitcher, accent: true),
               ]),
             ),
@@ -416,6 +456,49 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             const SizedBox(width: 6),
             Text(label, style: AppTheme.body(11.5, color: Colors.white, weight: FontWeight.w700)),
           ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _errorOverlay() {
+    return Center(
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 430),
+        margin: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xE61A2740),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.error_outline_rounded, color: Colors.white, size: 42),
+            const SizedBox(height: 10),
+            Text(
+              'Video haikuweza kuchezwa',
+              style: AppTheme.body(16, color: Colors.white, weight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _playerError ?? '',
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: AppTheme.body(11.5, color: Colors.white70),
+            ),
+            const SizedBox(height: 14),
+            TextButton.icon(
+              onPressed: _startBuffer,
+              icon: const Icon(Icons.refresh_rounded, color: AppColors.green),
+              label: Text(
+                'Jaribu tena',
+                style: AppTheme.body(13, color: Colors.white, weight: FontWeight.w700),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -779,7 +862,7 @@ class LanguagePickerSheet extends StatelessWidget {
   }
 }
 
-/// Stream quality picker — defaults to 360p in the player.
+/// Stream quality picker — values come from the loaded manifest.
 class QualityPickerSheet extends StatelessWidget {
   final List<String> qualities;
   final String selected;
@@ -824,7 +907,7 @@ class QualityPickerSheet extends StatelessWidget {
           const SizedBox(height: 16),
           ...qualities.map((q) {
             final active = q == selected;
-            final isDefault = q == '360p';
+            final isDefault = q == 'Auto';
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Material(

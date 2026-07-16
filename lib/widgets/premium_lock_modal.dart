@@ -1,36 +1,25 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
+import '../utils/payment_voices.dart';
 import 'common.dart';
 
 /// Premium unlock as a centered card carousel (side cards peek in).
 class PremiumLockModal extends StatefulWidget {
   const PremiumLockModal({super.key});
 
-  static const scripts = <String>[
-    'Ndugu, fungua chaneli zote kwa kufanya malipo. Ni rahisi tu.',
-    'Weka majina yako kamili na nambari ya simu, kisha gusa Endelea.',
-    'Chagua kifurushi unachotaka, kisha gusa Lipia sasa.',
-    'Tafadhali subiri. Tunangoja uthibitisho wa malipo yako.',
-  ];
-
-  static const successScript =
-      'Hongera! Malipo yamefanikiwa. Chaneli zote zimefunguliwa. Furahia kutazama.';
-
   static Future<void> show(BuildContext context) {
     return showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'premium-carousel',
-      barrierColor: Colors.transparent,
+      barrierColor: const Color(0x990F2748),
       transitionDuration: const Duration(milliseconds: 420),
       pageBuilder: (_, __, ___) => const PremiumLockModal(),
       transitionBuilder: (_, anim, __, child) {
@@ -51,10 +40,11 @@ class PremiumLockModal extends StatefulWidget {
 }
 
 class _PremiumLockModalState extends State<PremiumLockModal> with TickerProviderStateMixin {
-  late final PageController _pageCtrl;
-  final _tts = FlutterTts();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _nameFocus = FocusNode();
+  final _phoneFocus = FocusNode();
+  final _formScrollCtrl = ScrollController();
 
   AnimationController? _pulse;
   AnimationController? _wave;
@@ -68,8 +58,6 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
   String? _formError;
   String _selectedPkgId = 'mwezi';
 
-  static const _viewport = 0.78;
-
   void _ensureAnims() {
     _pulse ??= AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
     _wave ??= AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat();
@@ -80,10 +68,9 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
   @override
   void initState() {
     super.initState();
-    _pageCtrl = PageController(viewportFraction: _viewport);
     _ensureAnims();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final state = context.read<AppState>();
       if (state.userName != 'Mtumiaji') _nameCtrl.text = state.userName;
@@ -93,69 +80,38 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
         final popular = pkgs.where((p) => p.popular);
         _selectedPkgId = popular.isNotEmpty ? popular.first.id : pkgs.first.id;
       }
+      await PaymentVoices.prepare();
+      if (!mounted) return;
       _speak(_page);
     });
   }
 
-  Future<void> _speakText(String message) async {
-    try {
-      await _tts.stop();
-      await _tts.setSpeechRate(0.48);
-      await _tts.setVolume(1.0);
-      await _tts.setPitch(1.0);
-      var spoken = message;
-      final langs = await _tts.getLanguages;
-      if (langs is List) {
-        final list = langs.map((e) => e.toString().toLowerCase()).toList();
-        if (list.any((l) => l.contains('sw'))) {
-          await _tts.setLanguage(list.firstWhere((l) => l.contains('sw')));
-        } else {
-          await _tts.setLanguage('en-US');
-        }
-      }
-      _tts.setCompletionHandler(() {
-        if (mounted) setState(() => _speaking = false);
-      });
-      if (mounted) setState(() => _speaking = true);
-      await _tts.speak(spoken);
-    } catch (_) {
-      if (mounted) setState(() => _speaking = false);
-    }
-  }
-
-  Future<bool> _hasSwahiliVoice() async {
-    try {
-      final langs = await _tts.getLanguages;
-      if (langs is! List) return false;
-      return langs
-          .map((e) => e.toString().toLowerCase())
-          .any((l) => l.contains('sw'));
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<void> _speak(int step) async {
     if (_paymentSuccess) {
-      await _speakText(PremiumLockModal.successScript);
+      await PaymentVoices.playAsset(
+        PaymentVoices.successAsset,
+        onStart: () {
+          if (mounted) setState(() => _speaking = true);
+        },
+        onDone: () {
+          if (mounted) setState(() => _speaking = false);
+        },
+      );
       return;
     }
-    var message = PremiumLockModal.scripts[step.clamp(0, 3)];
-    if (!await _hasSwahiliVoice()) {
-      message = [
-        'Dear user, unlock all channels by making a payment. It is very easy.',
-        'Enter your full name and phone number, then tap Continue.',
-        'Choose a package, then tap Pay now.',
-        'Please wait. We are waiting for your payment confirmation.',
-      ][step.clamp(0, 3)];
-    }
-    await _speakText(message);
+    await PaymentVoices.playStep(
+      step.clamp(0, 3),
+      onStart: () {
+        if (mounted) setState(() => _speaking = true);
+      },
+      onDone: () {
+        if (mounted) setState(() => _speaking = false);
+      },
+    );
   }
 
   Future<void> _stopAudio() async {
-    try {
-      await _tts.stop();
-    } catch (_) {}
+    await PaymentVoices.stop();
     if (mounted) setState(() => _speaking = false);
   }
 
@@ -172,29 +128,44 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
       _waitSpin?.stop();
       setState(() => _paymentSuccess = true);
       await _successPop?.forward(from: 0);
-      if (mounted) await _speakText(PremiumLockModal.successScript);
+      if (mounted) {
+        await PaymentVoices.playAsset(
+          PaymentVoices.successAsset,
+          onStart: () {
+            if (mounted) setState(() => _speaking = true);
+          },
+          onDone: () {
+            if (mounted) setState(() => _speaking = false);
+          },
+        );
+      }
     });
   }
 
+  /// Button-only navigation — no swipe / PageView.
   Future<void> _goTo(int page, {bool speak = true}) async {
-    if (page < 0 || page > 3) return;
+    if (page < 0 || page > 3 || page == _page) return;
     await _stopAudio();
     if (!mounted) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+
     if (page != 3) {
       _confirmTimer?.cancel();
       _paymentSuccess = false;
     }
+
     setState(() {
       _page = page;
       _formError = null;
     });
-    await _pageCtrl.animateToPage(
-      page,
-      duration: const Duration(milliseconds: 520),
-      curve: Curves.easeOutCubic,
-    );
+
     if (page == 3) _schedulePaymentSuccess();
     if (speak && mounted && !_paymentSuccess) _speak(page);
+  }
+
+  Future<void> _back() async {
+    if (_page <= 0 || _page >= 3) return;
+    await _goTo(_page - 1);
   }
 
   Future<void> _close() async {
@@ -225,34 +196,29 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
       await _close();
       return;
     }
-    if (_page == 1 && !_validateDetails()) {
-      await _goTo(1, speak: false);
-      return;
-    }
+    if (_page == 1 && !_validateDetails()) return;
     if (_page == 2) {
       final pkgs = context.read<AppState>().packages;
       final pkg = pkgs.firstWhere((p) => p.id == _selectedPkgId, orElse: () => pkgs.first);
       context.read<AppState>().submitPaymentPending(pkg);
     }
-    if (_page >= 3) {
-      // Still waiting — ignore or stay
-      return;
-    }
+    if (_page >= 3) return;
     await _goTo(_page + 1);
   }
 
   @override
   void dispose() {
     _confirmTimer?.cancel();
+    _nameFocus.dispose();
+    _phoneFocus.dispose();
+    _formScrollCtrl.dispose();
     _pulse?.dispose();
     _wave?.dispose();
     _waitSpin?.dispose();
     _successPop?.dispose();
-    _pageCtrl.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
-    // Fire-and-forget — must catch async MissingPluginException (e.g. Linux / hot reload).
-    _tts.stop().then((_) {}, onError: (_) {});
+    PaymentVoices.stop();
     super.dispose();
   }
 
@@ -260,162 +226,130 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
   Widget build(BuildContext context) {
     _ensureAnims();
     final r = R.of(context);
-    final size = r.size;
-    final kb = r.viewInsets.bottom;
-    final topSafe = r.padding.top;
+    final kb = MediaQuery.viewInsetsOf(context).bottom;
     final keyboardOpen = kb > 40;
-    final chrome = keyboardOpen ? 72.0 : 108.0;
-    final available = size.height - kb - topSafe - chrome;
-    final cardH = keyboardOpen
-        ? available.clamp(240.0, 520.0)
+    final canGoBack = _page > 0 && _page < 3 && !_paymentSuccess;
+    // One lift only — avoid double-padding that shoved the card off-screen.
+    final maxCardH = keyboardOpen
+        ? (r.size.height - r.padding.top - 88).clamp(240.0, r.modalCardMaxH)
         : r.modalCardMaxH;
 
     return Material(
       color: Colors.transparent,
-      child: AnimatedPadding(
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-        padding: EdgeInsets.only(bottom: kb),
-        child: Stack(
-          children: [
-            // Frosted blur over whatever is behind the modal.
-            Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: _close,
-                child: ClipRect(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            const Color(0xFF0F2748).withOpacity(0.38),
-                            const Color(0xFF0F2748).withOpacity(0.52),
-                          ],
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                if (keyboardOpen) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                } else {
+                  _close();
+                }
+              },
+              child: const ColoredBox(color: Color(0x990F2748)),
+            ),
+          ),
+          AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            padding: EdgeInsets.only(bottom: kb),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        if (canGoBack)
+                          IconButton(
+                            onPressed: _back,
+                            tooltip: 'Rudi nyuma',
+                            icon: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.18),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 18),
+                            ),
+                          )
+                        else
+                          const SizedBox(width: 48),
+                        Expanded(child: Center(child: _dots())),
+                        IconButton(
+                          onPressed: _close,
+                          icon: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE53935),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Expanded(
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxHeight: maxCardH, maxWidth: 420),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 280),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, anim) => FadeTransition(
+                              opacity: anim,
+                              child: SlideTransition(
+                                position: Tween(begin: const Offset(0.04, 0), end: Offset.zero).animate(anim),
+                                child: child,
+                              ),
+                            ),
+                            child: KeyedSubtree(
+                              key: ValueKey('pay-step-$_page'),
+                              child: _CarouselCard(child: _cardBody(_page)),
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-              ),
-            ),
-            SafeArea(
-              bottom: false,
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 12, 0),
-                      child: Row(
+                    if (!keyboardOpen) ...[
+                      const SizedBox(height: 10),
+                      Row(
                         children: [
-                          Expanded(child: _dots()),
-                          IconButton(
-                            onPressed: _close,
-                            icon: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFFE53935),
-                                shape: BoxShape.circle,
+                          if (canGoBack)
+                            TextButton(
+                              onPressed: _back,
+                              child: Text(
+                                'Rudi',
+                                style: AppTheme.body(14, color: Colors.white.withValues(alpha: 0.9), weight: FontWeight.w700),
                               ),
-                              child: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                            )
+                          else
+                            const SizedBox(width: 56),
+                          Expanded(
+                            child: Text(
+                              _pageLabel,
+                              textAlign: TextAlign.center,
+                              style: AppTheme.body(13, color: Colors.white.withValues(alpha: 0.85), weight: FontWeight.w600),
                             ),
+                          ),
+                          _NextFab(
+                            onTap: _next,
+                            isLast: _page >= 3,
+                            success: _paymentSuccess,
                           ),
                         ],
                       ),
-                    ),
-                    if (!keyboardOpen) const SizedBox(height: 8),
-                    Expanded(
-                      child: Align(
-                        alignment: keyboardOpen ? Alignment.bottomCenter : Alignment.center,
-                        child: AnimatedSize(
-                          duration: const Duration(milliseconds: 220),
-                          curve: Curves.easeOutCubic,
-                          child: SizedBox(
-                            height: cardH,
-                            child: PageView.builder(
-                              controller: _pageCtrl,
-                              itemCount: 4,
-                              physics: _paymentSuccess
-                                  ? const NeverScrollableScrollPhysics()
-                                  : const PageScrollPhysics(),
-                              onPageChanged: (i) {
-                                setState(() {
-                                  _page = i;
-                                  _formError = null;
-                                });
-                                if (i == 3) {
-                                  _schedulePaymentSuccess();
-                                } else {
-                                  _confirmTimer?.cancel();
-                                  _paymentSuccess = false;
-                                }
-                                if (!_paymentSuccess) _speak(i);
-                              },
-                              itemBuilder: (context, index) {
-                                return AnimatedBuilder(
-                                  animation: _pageCtrl,
-                                  builder: (context, child) {
-                                    var scale = 1.0;
-                                    var opacity = 1.0;
-                                    if (_pageCtrl.position.haveDimensions) {
-                                      final dist = (_pageCtrl.page ?? _page.toDouble()) - index;
-                                      scale = (1 - dist.abs() * (keyboardOpen ? 0.06 : 0.12))
-                                          .clamp(keyboardOpen ? 0.94 : 0.86, 1.0);
-                                      opacity = (1 - dist.abs() * 0.35).clamp(0.55, 1.0);
-                                    } else if (index != _page) {
-                                      scale = 0.88;
-                                      opacity = 0.7;
-                                    }
-                                    return Transform.scale(
-                                      scale: scale,
-                                      child: Opacity(opacity: opacity, child: child),
-                                    );
-                                  },
-                                  child: Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: keyboardOpen ? 4 : 8,
-                                      vertical: keyboardOpen ? 4 : 10,
-                                    ),
-                                    child: _CarouselCard(
-                                      child: _cardBody(index, cardH),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (!keyboardOpen)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 4, 28, 8),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                _pageLabel,
-                                style: AppTheme.body(13, color: Colors.white.withOpacity(0.85), weight: FontWeight.w600),
-                              ),
-                            ),
-                            _NextFab(
-                              onTap: _next,
-                              isLast: _page >= 3,
-                              success: _paymentSuccess,
-                            ),
-                          ],
-                        ),
-                      ),
+                    ],
                   ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -436,15 +370,16 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
 
   Widget _dots() {
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: List.generate(4, (i) {
         final on = i == _page;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 280),
-          margin: const EdgeInsets.only(right: 6),
+          margin: const EdgeInsets.symmetric(horizontal: 3),
           width: on ? 22 : 8,
           height: 8,
           decoration: BoxDecoration(
-            color: on ? AppColors.green : Colors.white.withOpacity(0.35),
+            color: on ? AppColors.green : Colors.white.withValues(alpha: 0.35),
             borderRadius: BorderRadius.circular(8),
           ),
         );
@@ -452,7 +387,7 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
     );
   }
 
-  Widget _cardBody(int index, double cardH) {
+  Widget _cardBody(int index) {
     switch (index) {
       case 0:
         return _introCard();
@@ -500,20 +435,34 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
   Widget _detailsCard() {
     return _CardScaffold(
       hero: _HeroPanel(icon: Icons.person_rounded, pulse: _pulse!, compact: true),
+      heroHeight: 100,
       child: Column(
         children: [
           Expanded(
             child: SingleChildScrollView(
+              controller: _formScrollCtrl,
               physics: const BouncingScrollPhysics(),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               child: Column(
                 children: [
                   Text('Taarifa Zako', style: AppTheme.heading(18)),
                   const SizedBox(height: 10),
                   _audioStrip(),
                   const SizedBox(height: 12),
-                  _field(_nameCtrl, 'Weka majina yako kamili', Icons.badge_rounded),
+                  _field(
+                    _nameCtrl,
+                    'Weka majina yako kamili',
+                    Icons.badge_rounded,
+                    focusNode: _nameFocus,
+                  ),
                   const SizedBox(height: 8),
-                  _field(_phoneCtrl, 'Nambari ya simu', Icons.phone_rounded, TextInputType.phone),
+                  _field(
+                    _phoneCtrl,
+                    'Nambari ya simu',
+                    Icons.phone_rounded,
+                    type: TextInputType.phone,
+                    focusNode: _phoneFocus,
+                  ),
                   if (_formError != null) ...[
                     const SizedBox(height: 8),
                     Text(_formError!, style: AppTheme.body(12, color: Colors.redAccent, weight: FontWeight.w600)),
@@ -567,7 +516,7 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
                     duration: const Duration(milliseconds: 180),
                     padding: const EdgeInsets.all(11),
                     decoration: BoxDecoration(
-                      color: on ? AppColors.green.withOpacity(0.08) : AppColors.section,
+                      color: on ? AppColors.green.withValues(alpha: 0.08) : AppColors.section,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: on ? AppColors.green : Colors.transparent, width: 2),
                     ),
@@ -694,7 +643,7 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
       width: double.infinity,
       padding: EdgeInsets.symmetric(horizontal: 12, vertical: lite ? 8 : 10),
       decoration: BoxDecoration(
-        color: lite ? Colors.white.withOpacity(0.16) : AppColors.section,
+        color: lite ? Colors.white.withValues(alpha: 0.16) : AppColors.section,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -749,12 +698,28 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
     );
   }
 
-  Widget _field(TextEditingController c, String label, IconData icon, [TextInputType? type]) {
+  Widget _field(
+    TextEditingController c,
+    String label,
+    IconData icon, {
+    TextInputType? type,
+    FocusNode? focusNode,
+  }) {
     return TextField(
       controller: c,
+      focusNode: focusNode,
       keyboardType: type,
-      scrollPadding: const EdgeInsets.only(bottom: 160),
+      textInputAction: type == TextInputType.phone ? TextInputAction.done : TextInputAction.next,
+      onSubmitted: (_) {
+        if (type != TextInputType.phone) {
+          _phoneFocus.requestFocus();
+        } else {
+          FocusManager.instance.primaryFocus?.unfocus();
+        }
+      },
+      scrollPadding: const EdgeInsets.only(bottom: 120),
       style: AppTheme.body(14, color: AppColors.textPrimary, weight: FontWeight.w600),
+      cursorColor: AppColors.navy,
       onChanged: (_) {
         if (_formError != null) setState(() => _formError = null);
       },
@@ -763,9 +728,20 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
         labelStyle: AppTheme.body(12.5, color: AppColors.textHint),
         prefixIcon: Icon(icon, color: AppColors.navyMid, size: 18),
         filled: true,
-        fillColor: AppColors.section,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        fillColor: Colors.white,
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFD6E8F6), width: 1.4),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.green, width: 1.8),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: Color(0xFFD6E8F6)),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         isDense: true,
       ),
     );
@@ -780,11 +756,12 @@ class _CarouselCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AppColors.navy.withOpacity(0.14), width: 1.4),
+        border: Border.all(color: AppColors.navy.withValues(alpha: 0.14), width: 1.4),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF0F2748).withOpacity(0.32),
+            color: const Color(0xFF0F2748).withValues(alpha: 0.32),
             blurRadius: 36,
             offset: const Offset(0, 18),
           ),
@@ -792,7 +769,7 @@ class _CarouselCard extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
-        child: Material(color: Colors.white, child: child),
+        child: Material(color: Colors.white, elevation: 0, child: child),
       ),
     );
   }
@@ -828,9 +805,12 @@ class _CardScaffold extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-            child: child,
+          child: ColoredBox(
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              child: child,
+            ),
           ),
         ),
       ],
@@ -868,8 +848,8 @@ class _HeroPanel extends StatelessWidget {
                 height: compact ? 64 : 78,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.16),
-                  border: Border.all(color: Colors.white.withOpacity(0.28), width: 2),
+                  color: Colors.white.withValues(alpha: 0.16),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.28), width: 2),
                 ),
                 child: Icon(icon, color: Colors.white, size: compact ? 30 : 34),
               ),
@@ -898,10 +878,8 @@ class _NextFab extends StatelessWidget {
         height: 58,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(
-            colors: success
-                ? const [AppColors.green, AppColors.greenDark]
-                : const [AppColors.green, AppColors.greenDark],
+          gradient: const LinearGradient(
+            colors: [AppColors.green, AppColors.greenDark],
           ),
           boxShadow: AppColors.greenGlow(),
         ),
@@ -940,7 +918,7 @@ class _SuccessTick extends StatelessWidget {
                   gradient: const LinearGradient(colors: [AppColors.green, AppColors.greenDark]),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.green.withOpacity(0.45),
+                      color: AppColors.green.withValues(alpha: 0.45),
                       blurRadius: 24,
                       spreadRadius: 2,
                     ),

@@ -13,10 +13,11 @@ dependencies:
   google_fonts: ^6.2.1
   cached_network_image: ^3.4.1
   url_launcher: ^6.3.1
-  flutter_tts: ^4.2.5
   http: ^1.2.2
   shared_preferences: ^2.3.3
   uuid: ^4.5.1
+  audioplayers: ^6.8.1
+  flutter_inappwebview: ^6.1.5
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -39,3 +40,6 @@ flutter_launcher_icons:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/voices/
+    - assets/branding/
