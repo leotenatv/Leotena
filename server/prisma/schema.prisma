@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ChannelDrm {
+  NONE
+  WIDEVINE
+  CLEARKEY
+}
+
+enum DevicePlan {
+  FREE
+  PREMIUM
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model Setting {
+  id              String   @id @default("singleton")
+  supportWhatsApp String   @default("255712345678")
+  updatedAt       DateTime @updatedAt
+}
+
+model Channel {
+  id            String     @id @default(cuid())
+  name          String
+  category      String
+  url           String     @default("")
+  drm           ChannelDrm @default(NONE)
+  clearKey      String     @default("")
+  premium       Boolean    @default(true)
+  viewers       Int        @default(0)
+  live          Boolean    @default(false)
+  active        Boolean    @default(true)
+  imageUrl      String     @default("")
+  gradientStart String     @default("1D4A82")
+  gradientEnd   String     @default("2C6DB5")
+  sortOrder     Int        @default(0)
+
+  // VOD-only metadata, nullable — only populated/shown in the admin UI when category == "movies"
+  genre       String?
+  year        String?
+  rating      String?
+  duration    String?
+  resolution  String?
+  language    String?
+  director    String?
+  description String?
+  genres      String[] @default([])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category])
+}
+
+model ScheduleItem {
+  id            String   @id @default(cuid())
+  dateTime      DateTime
+  title         String
+  subtitle      String   @default("")
+  channel       String   @default("")
+  team1         String   @default("")
+  team2         String   @default("")
+  icon          String   @default("live_tv_rounded")
+  live          Boolean  @default(false)
+  active        Boolean  @default(true)
+  gradientStart String   @default("1D4A82")
+  gradientEnd   String   @default("2C6DB5")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([dateTime])
+}
+
+model CarouselSlide {
+  id            String   @id @default(cuid())
+  title         String
+  imageUrl      String   @default("")
+  order         Int      @default(0)
+  active        Boolean  @default(true)
+  gradientStart String   @default("0F2748")
+  gradientEnd   String   @default("19B26B")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model PricingPlan {
+  id        String   @id @default(cuid())
+  name      String
+  price     String
+  days      Int
+  note      String   @default("")
+  popular   Boolean  @default(false)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Device {
+  id           String     @id @default(cuid())
+  deviceId     String     @unique
+  name         String     @default("")
+  phone        String     @default("")
+  plan         DevicePlan @default(FREE)
+  active       Boolean    @default(true)
+  premiumUntil DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  subscriptions SubscriptionRecord[]
+}
+
+model SubscriptionRecord {
+  id             String   @id @default(cuid())
+  deviceRecordId String
+  device         Device   @relation(fields: [deviceRecordId], references: [id], onDelete: Cascade)
+  userName       String
+  packageName    String
+  amount         String
+  success        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}

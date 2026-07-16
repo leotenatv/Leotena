@@ -1,0 +1,1304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leotena TV - Premium Streaming</title>
+    <script src="https://cdn.tailwindcss.com">
+    </script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js">
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { 'sans': ['Poppins', 'ui-sans-serif', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        'brand': '#dc2626',
+                        'brand-blue': '#ef4444',
+                        'surface': '#0a0a0a',
+                        'surface-soft': '#111111',
+                        'surface-muted': '#1c1c1c',
+                    },
+                    keyframes: {
+                        shimmer: { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(100%)' } },
+                        'pulse-ring': { '0%': { transform: 'scale(.33)' }, '80%,100%': { opacity: '0' } },
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        :root {
+            --brand-blue: #ef4444;
+            --surface: #060710;
+        }
+        body {
+            background:
+              linear-gradient(120deg, rgba(6,8,20,0.92), rgba(15,8,30,0.85)),
+              url('assets/Mova-985cba89-0135-4e5b-bda6-0ca4c21fb323.png') center/cover no-repeat fixed;
+            min-height: 100vh;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background:
+              radial-gradient(500px 300px at 12% 12%, rgba(239, 68, 68, 0.16) 0%, rgba(239, 68, 68, 0) 70%),
+              radial-gradient(420px 320px at 84% 22%, rgba(99,102,241,0.18) 0%, rgba(99,102,241,0) 72%),
+              linear-gradient(to bottom, rgba(2,6,23,0.65), rgba(2,6,23,0.45));
+            z-index: 0;
+        }
+        * {
+            scrollbar-width: thin;
+            scrollbar-color: #27272a transparent;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #27272a;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3f3f46;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .shimmer {
+            position: relative;
+            overflow: hidden;
+            background: rgba(24, 24, 27, 0.5);
+            border-radius: 0.5rem;
+        }
+        .shimmer::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%);
+            animation: shimmer 1.5s infinite ease-in-out;
+        }
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(100%);
+            }
+        }
+        .text-shadow-sm {
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+        }
+        .text-shadow-md {
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+        }
+        .pulse-ring::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            background: rgba(0, 183, 255, 0.4);
+            border-radius: inherit;
+            left: -50%;
+            top: -50%;
+            animation: pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+        }
+        @keyframes pulse-ring {
+            0% {
+                transform: scale(.33);
+            }
+            80%,
+            100% {
+                opacity: 0;
+            }
+        }
+        .fade-in {
+            animation: fadeIn 0.4s ease-out;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .slide-up {
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .liquid-glass-card {
+            position: relative;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.26);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.3),
+                0 14px 30px rgba(0, 0, 0, 0.45),
+                0 3px 10px rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+        }
+        .liquid-glass-card::before {
+            content: none;
+        }
+        .liquid-glass-card::after {
+            content: none;
+        }
+        .liquid-edge-highlight {
+            display: none;
+        }
+    </style>
+</head>
+<body class="text-white font-sans antialiased overflow-x-hidden selection:bg-brand selection:text-white">
+
+    <div id="main-app" class="relative min-h-screen flex flex-col z-[1]">
+        <header id="navbar" class="fixed top-0 left-0 right-0 z-50 h-16 px-8 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent backdrop-blur-md">
+            <div class="flex items-center gap-10">
+                <div id="nav-logo" class="text-2xl font-black tracking-tighter text-brand flex items-center gap-2 cursor-pointer">
+                    <div class="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-white italic">S</div>
+                    LEOTENA TV
+                </div>
+                <nav class="hidden md:flex gap-6 text-sm font-medium text-zinc-400" id="desktop-nav">
+                    <button data-view="Home" class="nav-btn hover:text-white transition-all">Home</button>
+                    <button data-view="Live" class="nav-btn hover:text-white transition-all">Live Sports</button>
+                    <button data-view="Movies" class="nav-btn hover:text-white transition-all">Movies</button>
+                    <button data-view="Unlock" class="nav-btn hover:text-white transition-all">Fungua Zote</button>
+                </nav>
+            </div>
+            <div class="flex items-center gap-6">
+                <div class="relative hidden lg:flex items-center">
+                    <i data-lucide="search" class="text-zinc-400 absolute left-3 w-4 h-4"></i>
+                    <input type="text" placeholder="Search items..."
+                    class="bg-zinc-900/80 border border-zinc-800 rounded-full py-2 pl-10 pr-4 text-sm w-48 xl:w-64 focus:outline-none focus:border-brand-blue transition-all">
+                </div>
+                <button id="profile-btn" data-view="Profile"
+                class="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand to-rose-500 border border-white/20 transition-all"></button>
+            </div>
+        </header>
+
+        <main id="main-content" class="flex-1 pt-16 pb-24 overflow-x-hidden relative"></main>
+
+        <nav id="bottom-nav" class="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 h-16 w-[92%] md:w-[760px] rounded-2xl bg-[#0b1020]/85 backdrop-blur-xl border border-white/10 px-6 md:px-10 flex items-center justify-between shadow-[0_20px_40px_rgba(0,0,0,0.45)]">
+            <button data-view="Home" class="bottom-nav-btn flex flex-col items-center gap-1 transition-all text-brand">
+                <i data-lucide="home" class="w-5 h-5"></i><span class="text-[10px] font-bold uppercase">Home</span>
+            </button>
+            <button data-view="Live" class="bottom-nav-btn flex flex-col items-center gap-1 transition-all text-zinc-500">
+                <i data-lucide="tv" class="w-5 h-5"></i><span class="text-[10px] font-bold uppercase">Live</span>
+            </button>
+            <button data-view="Movies" class="bottom-nav-btn flex flex-col items-center gap-1 transition-all text-zinc-500">
+                <i data-lucide="film" class="w-5 h-5"></i><span class="text-[10px] font-bold uppercase">Movies</span>
+            </button>
+            <button data-view="Unlock" class="bottom-nav-btn flex flex-col items-center gap-1 transition-all text-zinc-500">
+                <i data-lucide="unlock" class="w-5 h-5"></i><span class="text-[10px] font-bold uppercase">Fungua Zote</span>
+            </button>
+            <button data-view="Profile" class="bottom-nav-btn flex flex-col items-center gap-1 transition-all text-zinc-500">
+                <i data-lucide="user" class="w-5 h-5"></i><span class="text-[10px] font-bold uppercase">Profile</span>
+            </button>
+        </nav>
+
+    </div>
+
+    <div id="admin-app" class="hidden h-screen bg-[#050507] text-zinc-100 flex overflow-hidden p-4 gap-4 font-sans select-none">
+    </div>
+
+    <div id="modal-overlay" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4"></div>
+    <div id="tutorial-overlay" class="hidden fixed inset-0 z-[200] flex items-center justify-center bg-black/95 backdrop-blur-2xl"></div>
+
+    <script>
+        // ==================== DATA STORE ====================
+        const MOCK_CHANNELS = [
+            { id: 'f1', title: 'SS Premier League Live', category: 'Live Sports', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/sspl/400/225',
+                description: 'Premier League: Arsenal vs Manchester United. Live commentary and pitchside updates.' },
+            { id: 'f2', title: 'Champions League HD', category: 'Live Sports', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/ucl/400/225',
+                description: 'European Nights: Real Madrid vs PSG. Match of the week.' },
+            { id: 'f3', title: 'La Liga TV Direct', category: 'Live Sports', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/liga/400/225',
+                description: 'Spanish La Liga: Barcelona vs Atletico Madrid. Live from Camp Nou.' },
+            { id: 'f4', title: 'Formula 1 Paddock', category: 'Live Sports', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/f1/400/225',
+                description: 'Monaco Grand Prix: Qualifying Session Live. Follow every lap.' },
+            { id: 'f5', title: 'NBA Courtside', category: 'Live Sports', isLive: true, isLocked: true,
+                thumbnail: 'https://picsum.photos/seed/nba/400/225',
+                description: 'NBA Playoffs: Lakers vs Celtics. Classic rivalry renewed.' },
+            { id: 'f6', title: 'UFC Fighting Hub', category: 'Live Sports', isLive: true, isLocked: true,
+                thumbnail: 'https://picsum.photos/seed/ufc/400/225',
+                description: 'Main Event: Championship Bout. Title on the line tonight.' },
+            { id: 'f7', title: 'Sky Sports News 24/7', category: 'Live Sports', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/sky/400/225',
+                description: 'Latest headlines from every corner of the sporting world.' },
+            { id: 'f8', title: 'ESPN FC Live', category: 'Live Sports', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/espn/400/225',
+                description: 'Deep dive into football tactics and transfer rumors.' },
+            { id: 'n1', title: 'CNN International', category: 'News', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/cnn/400/225',
+                description: 'Global breaking news and world events happening now.' },
+            { id: 'n2', title: 'Al Jazeera Live', category: 'News', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/alj/400/225',
+                description: 'Independent journalism and in-depth reporting from across the globe.' },
+            { id: 'n3', title: 'Bloomberg TV', category: 'News', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/bb/400/225',
+                description: 'Real-time financial markets, business news, and economic updates.' },
+            { id: 'm1', title: 'Action Cinema Max', category: 'Movies', isLive: true, isLocked: true,
+                thumbnail: 'https://picsum.photos/seed/movie1/400/225',
+                description: '24/7 high-octane action blockbusters. Non-stop thrills.' },
+            { id: 'm2', title: 'Thriller Central', category: 'Movies', isLive: true, isLocked: true,
+                thumbnail: 'https://picsum.photos/seed/movie2/400/225',
+                description: 'The most gripping mysteries and psychological thrillers.' },
+            { id: 'm3', title: 'Nat Geo Wild', category: 'Nature', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/natgeo/400/225',
+                description: 'Explore the wonders of the animal kingdom and wild habitats.' },
+            { id: 'm4', title: 'Food Network Live', category: 'Lifestyle', isLive: true,
+                thumbnail: 'https://picsum.photos/seed/food/400/225',
+                description: 'World-class chefs and exotic cuisines. Tutorials and live cooking.' },
+        ];
+
+        const BUNDLES = [
+            { id: 'b1', name: 'Almasi (Diamond)', price: '2,000', duration: 'Wiki Moja', days: 7,
+                description: 'Enjoy full access to all channels for 7 days.' },
+            { id: 'b2', name: 'Dhahabu (Gold)', price: '5,000', duration: 'Mwezi Mmoja', days: 30,
+                description: 'Our most popular plan. 30 days of premium entertainment.' },
+            { id: 'b3', name: 'Fahari (Platinum)', price: '12,000', duration: 'Miezi Mitatu', days: 90,
+                description: 'Stay connected for longer. 90 days of non-stop action.' },
+        ];
+
+        const REVENUE_DATA = [
+            { name: 'M', revenue: 420 }, { name: 'T', revenue: 580 }, { name: 'W', revenue: 490 },
+            { name: 'T', revenue: 720 }, { name: 'F', revenue: 850 }, { name: 'S', revenue: 1020 }, { name: 'S',
+                revenue: 980 },
+        ];
+
+        const ADMIN_CHANNELS = [
+            { id: '1', name: 'SS Premier League', viewers: 1240, status: 'Active', locked: false, quality: '4K' },
+            { id: '2', name: 'Netflix Premium', viewers: 850, status: 'Active', locked: true, quality: 'HD' },
+            { id: '3', name: 'CNN Global', viewers: 320, status: 'Active', locked: false, quality: 'HD' },
+            { id: '4', name: 'Action Max', viewers: 640, status: 'Active', locked: true, quality: '4K' },
+            { id: '5', name: 'Nat Geo Wild', viewers: 180, status: 'Active', locked: false, quality: 'HD' },
+        ];
+
+        const TRANSACTIONS = [
+            { id: 'TX-1', user: 'IAMMW...', amount: '2,000', method: 'M-Pesa', status: 'Success' },
+            { id: 'TX-2', user: 'JOHN D', amount: '5,000', method: 'Tigo', status: 'Success' },
+            { id: 'TX-3', user: 'SARAH', amount: '12,000', method: 'Airtel', status: 'Pending' },
+        ];
+
+        // ==================== STATE ====================
+        let currentView = 'Home';
+        let selectedChannel = null;
+        let paymentBundle = null;
+        let showTutorial = false;
+        let isPremium = false;
+        let subscriptionExpiry = null;
+        let audioContext = null;
+        let audioSource = null;
+        let preloadedAudio = {};
+        let tutorialStep = 0;
+        let tutorialPlaying = true;
+        let tutorialMuted = false;
+        let tutorialAudioLoading = false;
+        let heroIndex = 0;
+        let heroInterval = null;
+
+        // Init premium state from localStorage
+        try {
+            const stored = localStorage.getItem('supastream_premium');
+            if (stored) {
+                const { expiry } = JSON.parse(stored);
+                if (new Date(expiry).getTime() > new Date().getTime()) {
+                    isPremium = true;
+                    subscriptionExpiry = expiry;
+                }
+            }
+        } catch (e) {}
+
+        // ==================== ROUTING ====================
+        function checkHash() {
+            const hash = window.location.hash;
+            if (hash === '#admin') {
+                document.getElementById('main-app').classList.add('hidden');
+                document.getElementById('admin-app').classList.remove('hidden');
+                document.getElementById('modal-overlay').classList.add('hidden');
+                document.getElementById('tutorial-overlay').classList.add('hidden');
+                renderAdminDashboard();
+            } else {
+                document.getElementById('main-app').classList.remove('hidden');
+                document.getElementById('admin-app').classList.add('hidden');
+                lucide.createIcons();
+            }
+        }
+
+        window.addEventListener('hashchange', checkHash);
+        checkHash();
+
+        // ==================== NAVIGATION ====================
+        function navigate(view) {
+            if (view === currentView && !selectedChannel && view !== 'Player') return;
+            if (view === 'Player' && !selectedChannel) return;
+
+            currentView = view;
+            if (view !== 'Player') selectedChannel = null;
+            if (view === 'Unlock') showTutorial = true;
+
+            updateNavStyles();
+            renderMainContent();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            lucide.createIcons();
+        }
+
+        function updateNavStyles() {
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                const v = btn.dataset.view;
+                if (v === currentView) {
+                    btn.classList.add('text-white', 'underline', 'decoration-brand', 'decoration-2',
+                        'underline-offset-4');
+                    btn.classList.remove('text-zinc-400');
+                } else {
+                    btn.classList.remove('text-white', 'underline', 'decoration-brand', 'decoration-2',
+                        'underline-offset-4');
+                    btn.classList.add('text-zinc-400');
+                }
+            });
+            document.querySelectorAll('.bottom-nav-btn').forEach(btn => {
+                const v = btn.dataset.view;
+                if (v === currentView) {
+                    btn.classList.add('text-brand');
+                    btn.classList.remove('text-zinc-500');
+                } else {
+                    btn.classList.remove('text-brand');
+                    btn.classList.add('text-zinc-500');
+                }
+            });
+            const profileBtn = document.getElementById('profile-btn');
+            if (profileBtn) {
+                if (currentView === 'Profile') {
+                    profileBtn.classList.add('border-white');
+                    profileBtn.classList.remove('border-white/20');
+                } else {
+                    profileBtn.classList.remove('border-white');
+                    profileBtn.classList.add('border-white/20');
+                }
+            }
+        }
+
+        // Event delegation for navigation
+        document.addEventListener('click', (e) => {
+            const navBtn = e.target.closest('[data-view]');
+            if (navBtn && !e.target.closest('#admin-app') && !e.target.closest('#modal-overlay') && !e.target
+                .closest('#tutorial-overlay')) {
+                const view = navBtn.dataset.view;
+                if (view === 'Profile' && navBtn.id === 'profile-btn') navigate('Profile');
+                else if (navBtn.classList.contains('nav-btn') || navBtn.classList.contains('bottom-nav-btn'))
+                    navigate(view);
+            }
+            const logoBtn = e.target.closest('#nav-logo');
+            if (logoBtn) navigate('Home');
+            const adminLink = e.target.closest('[data-admin-link]');
+            if (adminLink) {
+                e.preventDefault();
+                window.location.hash = '#admin';
+            }
+        });
+
+        // ==================== RENDER MAIN CONTENT ====================
+        function renderMainContent() {
+            const container = document.getElementById('main-content');
+            if (!container) return;
+            let html = '';
+
+            switch (currentView) {
+                case 'Home':
+                    html = renderHomeView();
+                    break;
+                case 'Live':
+                    html = renderGridView('Live Events', MOCK_CHANNELS.filter(c => c.isLive));
+                    break;
+                case 'Movies':
+                    html = renderGridView('Cinema Highlights', MOCK_CHANNELS.filter(c => c.category === 'Movies'));
+                    break;
+                case 'Unlock':
+                    html = renderFunguaZoteView();
+                    break;
+                case 'Profile':
+                    html = renderProfileView();
+                    break;
+                case 'Player':
+                    html = renderPlayerView();
+                    break;
+                default:
+                    html = renderHomeView();
+            }
+
+            container.innerHTML = html;
+            lucide.createIcons();
+            attachChannelCardListeners();
+            if (currentView === 'Home') startHeroCarousel();
+            if (currentView === 'Player') setupPlayerLoading();
+        }
+
+        function renderHomeView() {
+            const featured = [
+                { ...MOCK_CHANNELS[0], tag: 'LIVE', league: 'UEFA Champions League', title: 'REAL MADRID vs MAN CITY',
+                    desc: 'Semi-Final First Leg • LIVE from Santiago Bernabéu.' },
+                { ...MOCK_CHANNELS[1], tag: 'LIVE', league: 'La Liga', title: 'EL CLASICO: REAL vs BARCA',
+                    desc: 'The biggest game in club football returns to the Spotify Camp Nou.' },
+                { ...MOCK_CHANNELS[7], tag: 'LIVE', league: 'Sky Sports', title: 'S. SPORTS NEWS LIVE',
+                    desc: 'Breaking news from around the world. Stay updated with the latest headlines.' },
+                { ...MOCK_CHANNELS[8], tag: 'NEW', league: 'Action', title: 'BAD BOYS: RIDE OR DIE',
+                    desc: "The world's favorite bad boys are back with more action and comedy." },
+            ];
+            const f = featured[heroIndex];
+
+            let html = `
+            <div class="space-y-2 fade-in">
+              <section class="px-4 md:px-8 pt-4">
+                <div class="overflow-x-auto no-scrollbar">
+                  <div id="category-tabs" class="flex gap-3 min-w-max">
+                    <button data-tab="zote" aria-current="true" class="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-brand-blue border border-brand-blue text-white text-xs font-black uppercase tracking-wider whitespace-nowrap shadow-lg shadow-brand-blue/25 ring-2 ring-brand-blue/30">
+                      <i data-lucide="layout-grid" class="w-4 h-4"></i>
+                      Zote
+                    </button>
+                    <button class="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-zinc-900/90 border border-zinc-800 text-zinc-300 text-xs font-black uppercase tracking-wider whitespace-nowrap hover:border-brand-blue hover:text-brand-blue hover:bg-zinc-900 transition-all duration-200">
+                      <i data-lucide="trophy" class="w-4 h-4"></i>
+                      Mpira
+                    </button>
+                    <button class="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-zinc-900/90 border border-zinc-800 text-zinc-300 text-xs font-black uppercase tracking-wider whitespace-nowrap hover:border-brand-blue hover:text-brand-blue hover:bg-zinc-900 transition-all duration-200">
+                      <i data-lucide="clapperboard" class="w-4 h-4"></i>
+                      Tamthilia
+                    </button>
+                    <button class="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-zinc-900/90 border border-zinc-800 text-zinc-300 text-xs font-black uppercase tracking-wider whitespace-nowrap hover:border-brand-blue hover:text-brand-blue hover:bg-zinc-900 transition-all duration-200">
+                      <i data-lucide="paw-print" class="w-4 h-4"></i>
+                      Wanyama
+                    </button>
+                    <button class="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-zinc-900/90 border border-zinc-800 text-zinc-300 text-xs font-black uppercase tracking-wider whitespace-nowrap hover:border-brand-blue hover:text-brand-blue hover:bg-zinc-900 transition-all duration-200">
+                      <i data-lucide="baby" class="w-4 h-4"></i>
+                      Katuni
+                    </button>
+                    <button class="flex items-center gap-2 px-4 py-2 rounded-[10px] bg-zinc-900/90 border border-zinc-800 text-zinc-300 text-xs font-black uppercase tracking-wider whitespace-nowrap hover:border-brand-blue hover:text-brand-blue hover:bg-zinc-900 transition-all duration-200">
+                      <i data-lucide="newspaper" class="w-4 h-4"></i>
+                      Habari
+                    </button>
+                  </div>
+                </div>
+              </section>
+              <section class="relative h-[500px] md:h-[500px] w-full rounded-2xl overflow-hidden shadow-2xl mx-auto max-w-[1400px] ring-1 ring-white/10 group" id="hero-section">
+                <div class="absolute inset-0 transition-opacity duration-800" id="hero-bg">
+                  <img src="${f.thumbnail}" alt="Featured" class="w-full h-full object-cover" referrerpolicy="no-referrer">
+                  <div class="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent"></div>
+                  <div class="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent"></div>
+                </div>
+                <div class="relative h-full flex flex-col justify-end pb-12 px-6 md:px-12 gap-2 z-10">
+                  <div class="flex items-center gap-2">
+                    <span class="px-1.5 py-0.5 ${f.tag==='LIVE'?'bg-red-600':'bg-zinc-700'} text-[8px] font-black rounded-sm uppercase tracking-widest leading-none">${f.tag}</span>
+                    <span class="text-[9px] font-bold text-brand-blue uppercase tracking-widest">${f.league}</span>
+                  </div>
+                  <h2 class="text-lg md:text-2xl font-black max-w-sm leading-tight italic uppercase tracking-tighter text-shadow-md">${f.title}</h2>
+                </div>
+                <div class="absolute bottom-6 left-6 md:left-12 flex gap-1.5 z-10" id="hero-dots">
+                  ${featured.map((_,i) => `<button data-hero-index="${i}" class="h-0.5 rounded-full transition-all duration-300 ${i===heroIndex?'w-8 bg-brand-blue':'w-4 bg-zinc-600'}"></button>`).join('')}
+                </div>
+              </section>
+              <div class="relative pt-6">
+                ${renderCategoryRows()}
+              </div>
+            </div>`;
+            return html;
+        }
+
+        function renderCategoryRows() {
+            const categories = [
+                // Mpira first: render all football/sports channels (8+ items).
+                { id: 'cat-mpira', title: '⚽ Mpira', channels: MOCK_CHANNELS.filter(c => c.category === 'Live Sports') },
+                { id: 'cat-tamthilia', title: '🎬 Tamthilia', channels: MOCK_CHANNELS.filter(c => c.category === 'Movies') },
+                { id: 'cat-habari', title: '📰 Habari', channels: MOCK_CHANNELS.filter(c => c.category === 'News') },
+                { id: 'cat-wanyama', title: '🦁 Wanyama', channels: MOCK_CHANNELS.filter(c => c.category === 'Nature') },
+                { id: 'cat-katuni', title: '🧸 Katuni', channels: MOCK_CHANNELS.filter(c => c.category === 'Lifestyle') },
+                { id: 'cat-zote', title: '📺 Zote', channels: MOCK_CHANNELS },
+            ];
+            return categories.map(cat => `
+            <div class="py-4 group/row">
+              <div class="flex items-center justify-between px-6 md:px-12 mb-4">
+                <h2 class="text-sm font-bold flex items-center gap-2 uppercase italic tracking-widest text-zinc-400">
+                  <span class="w-1 h-3 bg-brand-blue rounded-full"></span>${cat.title}
+                </h2>
+                <button class="text-[10px] text-zinc-600 hover:text-white uppercase tracking-widest font-bold transition-colors">More</button>
+              </div>
+              <div class="relative px-6 md:px-12">
+                <div class="flex gap-4 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory" data-scroll-row>
+                  ${cat.channels.map(ch => renderChannelCard(ch, true)).join('')}
+                </div>
+              </div>
+            </div>`).join('');
+        }
+
+        function renderChannelCard(channel, compact = false) {
+            const locked = channel.isLocked && !isPremium;
+            return `
+            <div class="snap-start shrink-0 w-[240px] channel-card cursor-pointer group relative" data-channel-id="${channel.id}">
+              <div class="relative w-[240px] h-[300px] liquid-glass-card bg-white/10 transition-all duration-300 group-hover:scale-[1.01]">
+                ${channel.isLive ? `<div class="absolute top-2 left-2 z-10 px-1.5 py-0.5 bg-red-600 text-[8px] font-black rounded-sm uppercase flex items-center gap-1 shadow-lg"><span class="w-1 h-1 bg-white rounded-full animate-pulse"></span>Live</div>` : ''}
+                ${locked
+                  ? `<div class="absolute top-2 right-2 z-20 flex items-center gap-1 px-2 py-1 rounded-md border border-white/40 bg-black/35">
+                       <i data-lucide="lock" class="w-3.5 h-3.5 text-white"></i>
+                       <span class="text-[8px] font-black uppercase tracking-wider text-white">MALIPO</span>
+                     </div>`
+                  : `<div class="absolute top-2 right-2 z-20 flex items-center gap-1 px-2 py-1 rounded-md border border-white/40 bg-black/35">
+                       <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-300"></i>
+                       <span class="text-[8px] font-black uppercase tracking-wider text-white">BURE</span>
+                     </div>`}
+                <img src="${channel.thumbnail}" alt="${channel.title}" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" referrerpolicy="no-referrer">
+                <div class="liquid-edge-highlight"></div>
+                <div class="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent">
+                  <p class="text-[12px] font-black uppercase tracking-tight italic text-white line-clamp-2">${channel.title}</p>
+                </div>
+              </div>
+            </div>`;
+        }
+
+        function attachChannelCardListeners() {
+            document.querySelectorAll('.channel-card').forEach(card => {
+                card.addEventListener('click', () => {
+                    const id = card.dataset.channelId;
+                    const channel = MOCK_CHANNELS.find(c => c.id === id);
+                    if (channel) handleChannelSelect(channel);
+                });
+            });
+        }
+
+        function handleChannelSelect(channel) {
+            if (channel.isLocked && !isPremium) {
+                navigate('Unlock');
+                return;
+            }
+            selectedChannel = channel;
+            navigate('Player');
+        }
+
+        function startHeroCarousel() {
+            if (heroInterval) clearInterval(heroInterval);
+            const featured = [
+                { ...MOCK_CHANNELS[0], tag: 'LIVE', league: 'UEFA Champions League', title: 'REAL MADRID vs MAN CITY',
+                    desc: 'Semi-Final First Leg • LIVE from Santiago Bernabéu.' },
+                { ...MOCK_CHANNELS[1], tag: 'LIVE', league: 'La Liga', title: 'EL CLASICO: REAL vs BARCA',
+                    desc: 'The biggest game in club football returns to the Spotify Camp Nou.' },
+                { ...MOCK_CHANNELS[7], tag: 'LIVE', league: 'Sky Sports', title: 'S. SPORTS NEWS LIVE',
+                    desc: 'Breaking news from around the world. Stay updated with the latest headlines.' },
+                { ...MOCK_CHANNELS[8], tag: 'NEW', league: 'Action', title: 'BAD BOYS: RIDE OR DIE',
+                    desc: "The world's favorite bad boys are back with more action and comedy." },
+            ];
+            heroInterval = setInterval(() => {
+                heroIndex = (heroIndex + 1) % featured.length;
+                updateHeroDisplay(featured);
+            }, 5000);
+
+            document.getElementById('hero-dots')?.addEventListener('click', (e) => {
+                const dot = e.target.closest('[data-hero-index]');
+                if (dot) {
+                    heroIndex = parseInt(dot.dataset.heroIndex);
+                    updateHeroDisplay(featured);
+                    clearInterval(heroInterval);
+                    heroInterval = setInterval(() => {
+                        heroIndex = (heroIndex + 1) % featured.length;
+                        updateHeroDisplay(featured);
+                    }, 5000);
+                }
+            });
+        }
+
+        function updateHeroDisplay(featured) {
+            const f = featured[heroIndex];
+            const bg = document.getElementById('hero-bg');
+            if (bg) {
+                bg.style.opacity = '0';
+                setTimeout(() => {
+                    bg.innerHTML = `
+                    <img src="${f.thumbnail}" alt="Featured" class="w-full h-full object-cover" referrerpolicy="no-referrer">
+                    <div class="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent"></div>
+                    <div class="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#0a0a0a] via-transparent to-transparent"></div>`;
+                    bg.style.opacity = '1';
+                }, 300);
+            }
+            const tagEl = document.querySelector('#hero-section .text-\\[8px\\]');
+            const leagueEl = document.querySelector('#hero-section .text-brand-blue');
+            const titleEl = document.querySelector('#hero-section h2');
+            if (tagEl) { tagEl.textContent = f.tag;
+                tagEl.className = `px-1.5 py-0.5 ${f.tag==='LIVE'?'bg-red-600':'bg-zinc-700'} text-[8px] font-black rounded-sm uppercase tracking-widest leading-none`; }
+            if (leagueEl) leagueEl.textContent = f.league;
+            if (titleEl) titleEl.textContent = f.title;
+            document.querySelectorAll('#hero-dots button').forEach((dot, i) => {
+                dot.className = `h-0.5 rounded-full transition-all duration-300 ${i===heroIndex?'w-8 bg-brand-blue':'w-4 bg-zinc-600'}`;
+            });
+        }
+
+        function renderGridView(title, channels) {
+            return `
+            <div class="fade-in py-6 px-4 md:px-8 space-y-6">
+              <div class="flex items-center gap-3">
+                <span class="w-1 h-5 bg-brand-blue rounded-full"></span>
+                <h2 class="text-xl font-bold italic tracking-tighter uppercase">${title}</h2>
+              </div>
+              <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-x-4 gap-y-8">
+                ${channels.map(ch => renderChannelCard(ch, false)).join('')}
+              </div>
+            </div>`;
+        }
+
+        function setupPlayerLoading() {
+            const playerImg = document.getElementById('player-thumb');
+            if (playerImg) {
+                playerImg.style.opacity = '1';
+            }
+        }
+
+        function renderPlayerView() {
+            if (!selectedChannel) return '';
+            const ch = selectedChannel;
+            const premiumChannels = MOCK_CHANNELS.filter(c => c.isLocked).slice(0, 10);
+            return `
+            <div class="fade-in flex flex-col lg:flex-row gap-6 px-4 md:px-8 py-6">
+              <div class="flex-1 space-y-4">
+                <div class="aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-2xl relative border border-white/5 ring-1 ring-zinc-800">
+                  <img id="player-thumb" src="${ch.thumbnail}" alt="Background" class="absolute inset-0 w-full h-full object-cover blur-2xl opacity-20 transition-opacity duration-500">
+                  <div class="absolute inset-0 flex items-center justify-center">
+                    <i data-lucide="play" class="w-20 h-20 text-white opacity-20"></i>
+                  </div>
+                  <div class="absolute inset-0 flex flex-col justify-between p-6 opacity-0 hover:opacity-100 transition-opacity bg-gradient-to-t from-black/80 via-transparent to-black/40">
+                    <div class="flex justify-between items-start">
+                      <h1 class="text-xl font-bold uppercase italic tracking-tighter">${ch.title}</h1>
+                      <div class="flex items-center gap-4">
+                        ${ch.isLive?'<span class="bg-red-600 px-2 py-0.5 rounded text-[10px] font-black animate-pulse">LIVE</span>':''}
+                        <i data-lucide="info" class="w-4 h-4 text-zinc-400"></i>
+                      </div>
+                    </div>
+                    <div class="space-y-4">
+                      <div class="h-1 w-full bg-white/20 rounded-full overflow-hidden"><div class="h-full w-1/3 bg-brand-blue"></div></div>
+                      <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-6">
+                          <i data-lucide="play" class="w-6 h-6 fill-white"></i>
+                          <span class="text-xs font-mono">00:42:15 / 02:14:50</span>
+                          <i data-lucide="volume-2" class="w-6 h-6"></i>
+                        </div>
+                        <div class="flex items-center gap-4">
+                          <span class="text-[10px] font-bold px-2 py-1 border border-white/20 rounded">1080p HD</span>
+                          <i data-lucide="maximize" class="w-5 h-5"></i>
+                          <i data-lucide="compass" class="w-6 h-6"></i>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-4">
+                  <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="space-y-1">
+                      <h2 class="text-2xl font-black italic tracking-tighter uppercase">${ch.title}</h2>
+                      <div class="flex items-center gap-4 text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                        <span>${ch.category}</span><span class="w-1 h-1 rounded-full bg-zinc-700"></span>
+                        <span>4.8k watching now</span><span class="w-1 h-1 rounded-full bg-zinc-700"></span>
+                        <span>2 hours ago</span>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <button onclick="navigate('Unlock')" class="px-6 py-3 bg-gradient-to-r from-brand-blue to-indigo-600 text-white rounded-full font-black text-[10px] uppercase tracking-[0.2em] italic shadow-lg shadow-brand-blue/20 hover:scale-105 active:scale-95 transition-all">Fungua Channel Zote</button>
+                      <button class="p-3 bg-zinc-900 border border-zinc-800 rounded-full hover:bg-zinc-800 transition-colors"><i data-lucide="plus" class="w-5 h-5"></i></button>
+                    </div>
+                  </div>
+                  <div class="p-4 bg-zinc-900/50 rounded-xl border border-zinc-800 text-sm text-zinc-400 leading-relaxed">${ch.description}</div>
+                </div>
+              </div>
+              <div class="lg:w-96 space-y-6">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-[10px] font-black uppercase italic tracking-[0.2em] text-indigo-400">Premium Exclusives</h3>
+                  <div class="w-8 h-px bg-indigo-400/20 flex-1 ml-4"></div>
+                </div>
+                <div class="space-y-4">
+                  ${premiumChannels.map(c => `
+                  <div class="flex gap-4 group cursor-pointer p-2 rounded-2xl hover:bg-zinc-900/50 transition-all border border-transparent hover:border-zinc-800" data-channel-id="${c.id}">
+                    <div class="w-32 aspect-video rounded-xl overflow-hidden bg-zinc-900 shrink-0 border border-zinc-800/50 relative">
+                      <img src="${c.thumbnail}" alt="${c.title}" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700">
+                      <div class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"><i data-lucide="play" class="w-4 h-4 fill-white"></i></div>
+                      <div class="absolute top-1 right-1 bg-black/80 backdrop-blur-sm p-1 rounded-md border border-white/10"><i data-lucide="user" class="w-2.5 h-2.5 text-brand-blue"></i></div>
+                    </div>
+                    <div class="space-y-1.5 py-0.5 min-w-0">
+                      <div class="flex items-center gap-1.5"><span class="text-[8px] px-1 bg-brand-blue text-white rounded-sm font-black italic">PRO</span><h4 class="text-[10px] font-black line-clamp-1 uppercase italic tracking-tight group-hover:text-brand-blue transition-colors leading-tight">${c.title}</h4></div>
+                      <p class="text-[8px] text-zinc-500 font-bold uppercase tracking-widest">${c.category}</p>
+                    </div>
+                  </div>`).join('')}
+                </div>
+                <button onclick="navigate('Unlock')" class="w-full py-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] italic text-zinc-400 hover:bg-brand-blue hover:text-white transition-all">Unlock Premium Library</button>
+              </div>
+            </div>`;
+        }
+
+        function renderFunguaZoteView() {
+            return `
+            <div class="fade-in max-w-4xl mx-auto py-12 px-6 space-y-12 pb-24">
+              <div class="flex flex-col items-center gap-6 text-center">
+                <div class="space-y-4">
+                  <h1 class="text-4xl md:text-6xl font-black italic tracking-tighter uppercase leading-none">Fungua Channel <span class="text-brand-blue">Zote</span></h1>
+                  <p class="text-zinc-500 font-medium max-w-xl mx-auto">Access premium global sports, documentaries, and latest blockbusters instantly from SuperSport, Netflix and more.</p>
+                </div>
+                <button onclick="openTutorial()" class="flex items-center gap-3 px-6 py-3 bg-zinc-900 border border-zinc-800 rounded-2xl hover:bg-zinc-800 transition-all group">
+                  <div class="p-2 bg-brand-blue/10 rounded-xl group-hover:bg-brand-blue/20 transition-all"><i data-lucide="play-circle" class="w-5 h-5 text-brand-blue"></i></div>
+                  <div class="text-left"><span class="block text-[10px] font-black uppercase tracking-widest text-white leading-none mb-1">Video Tutorial</span><span class="block text-[8px] font-bold uppercase tracking-widest text-zinc-500 leading-none">Jinsi ya kulipia (Click hapa)</span></div>
+                </button>
+              </div>
+              ${isPremium && subscriptionExpiry ? renderActiveSubscription() : ''}
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                ${BUNDLES.map(b => `
+                <div class="relative px-5 py-6 rounded-[2rem] bg-zinc-900 border border-zinc-800 hover:border-brand-blue/40 transition-all group overflow-hidden flex flex-col justify-between shadow-lg">
+                  <div class="space-y-4 relative z-10">
+                    <div class="flex justify-between items-start">
+                      <div><h3 class="text-md font-black italic uppercase tracking-tighter group-hover:text-brand-blue transition-colors leading-none">${b.name}</h3><p class="text-zinc-500 text-[8px] font-black uppercase tracking-widest mt-1">${b.duration}</p></div>
+                      <div class="w-8 h-8 bg-brand-blue/10 rounded-xl flex items-center justify-center shrink-0"><i data-lucide="play" class="w-3 h-3 text-brand-blue"></i></div>
+                    </div>
+                    <div class="flex items-baseline gap-1 py-1"><span class="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Tsh</span><span class="text-3xl font-black tracking-tight">${b.price}</span></div>
+                    <p class="text-[10px] text-zinc-500 leading-tight font-bold italic line-clamp-2">${b.description}</p>
+                    <div class="space-y-1.5 pt-2">
+                      <div class="flex items-center gap-2 text-[8px] text-zinc-600 font-black uppercase tracking-wide"><div class="w-1 h-1 bg-brand-blue/30 rounded-full"></div>500+ Local & Global Channels</div>
+                      <div class="flex items-center gap-2 text-[8px] text-zinc-600 font-black uppercase tracking-wide"><div class="w-1 h-1 bg-brand-blue/30 rounded-full"></div>Live Sports in 4K HD</div>
+                    </div>
+                  </div>
+                  <button onclick="selectBundle('${b.id}')" class="w-full mt-6 py-3.5 bg-zinc-800/80 hover:bg-brand-blue hover:shadow-lg hover:shadow-brand-blue/20 text-white font-black rounded-2xl transition-all uppercase tracking-widest italic text-[10px] active:scale-95 relative z-10">Subscribe Now</button>
+                  <div class="absolute -top-10 -right-10 p-4 opacity-[0.03] pointer-events-none group-hover:rotate-12 transition-transform duration-700"><i data-lucide="lock" class="w-[140px] h-[140px]"></i></div>
+                </div>`).join('')}
+              </div>
+              <div class="p-6 rounded-3xl bg-zinc-900/50 border border-zinc-800/50 flex flex-col md:flex-row items-center gap-6">
+                <div class="w-16 h-16 shrink-0 rounded-2xl bg-zinc-800 border border-zinc-700 flex items-center justify-center text-brand-blue shadow-lg shadow-black/20"><i data-lucide="info" class="w-8 h-8"></i></div>
+                <div class="flex-1 text-center md:text-left">
+                  <h4 class="text-md font-black uppercase tracking-tight italic text-white">Tarifa za Malipo & Maelekezo</h4>
+                  <p class="text-[11px] text-zinc-500 font-bold leading-relaxed mt-1 uppercase tracking-wider">Baada ya kuchagua Bundle, utatakiwa kuweka namba yako ya Simu. Utapokea ujumbe kwenye simu yako kisha utaweka namba ya siri (PIN) kukamilisha malipo. Huduma itakuwa active papo hapo.</p>
+                </div>
+              </div>
+            </div>`;
+        }
+
+        function renderActiveSubscription() {
+            const expiry = new Date(subscriptionExpiry);
+            const now = new Date();
+            const diff = expiry.getTime() - now.getTime();
+            if (diff <= 0) return '';
+            const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            const s = Math.floor((diff % (1000 * 60)) / 1000);
+            return `
+            <div class="p-8 rounded-3xl bg-indigo-600/10 border border-indigo-500/30 ring-1 ring-indigo-500/20 flex flex-col items-center gap-6 shadow-2xl shadow-indigo-500/10">
+              <div class="flex flex-col items-center text-center gap-2">
+                <h3 class="text-lg font-black italic tracking-tight text-white uppercase">Leotena TV Premium Iko Active</h3>
+                <p class="text-zinc-400 text-xs font-bold uppercase tracking-widest leading-none">Umebakiwa na Siku, Masaa, dakika na sekunde:</p>
+              </div>
+              <div class="flex gap-2 countdown-timer" data-expiry="${subscriptionExpiry}">
+                <div class="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg w-16"><span class="text-xl font-black tabular-nums tracking-tighter">${String(d).padStart(2,'0')}</span><span class="text-[8px] uppercase font-bold text-zinc-500">Siku</span></div>
+                <div class="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg w-16"><span class="text-xl font-black tabular-nums tracking-tighter">${String(h).padStart(2,'0')}</span><span class="text-[8px] uppercase font-bold text-zinc-500">Masaa</span></div>
+                <div class="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg w-16"><span class="text-xl font-black tabular-nums tracking-tighter">${String(m).padStart(2,'0')}</span><span class="text-[8px] uppercase font-bold text-zinc-500">Dakika</span></div>
+                <div class="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg w-16"><span class="text-xl font-black tabular-nums tracking-tighter">${String(s).padStart(2,'0')}</span><span class="text-[8px] uppercase font-bold text-zinc-500">Sekunde</span></div>
+              </div>
+              <p class="text-indigo-400 text-[10px] font-black uppercase tracking-[0.2em] italic">Asante kwa Support yako!</p>
+            </div>`;
+        }
+
+        function renderProfileView() {
+            return `
+            <div class="fade-in max-w-4xl mx-auto py-12 px-6 space-y-12 pb-32">
+              <div class="flex flex-col md:flex-row items-center gap-8 pb-10 border-b border-zinc-800/50">
+                <div class="relative group">
+                  <div class="w-32 h-32 rounded-[2.5rem] bg-gradient-to-tr from-brand-blue to-indigo-600 p-1 shadow-2xl shadow-brand-blue/20">
+                    <div class="w-full h-full rounded-[2.2rem] bg-zinc-900 flex items-center justify-center text-4xl font-black italic">JD</div>
+                  </div>
+                  <div class="absolute -bottom-2 -right-2 w-10 h-10 bg-zinc-800 border-4 border-[#0a0a0a] rounded-full flex items-center justify-center"><i data-lucide="settings" class="w-4 h-4 text-zinc-400"></i></div>
+                </div>
+                <div class="text-center md:text-left space-y-3">
+                  <div><h2 class="text-4xl font-black italic tracking-tighter uppercase leading-tight">JD MWAMPULULE</h2><p class="text-zinc-500 font-bold text-xs uppercase tracking-widest">iammwampulule@gmail.com • Premium ID: SS-2758-7135</p></div>
+                  <div class="flex flex-wrap justify-center md:justify-start gap-3">
+                    <span class="px-3 py-1 text-[10px] font-black rounded-lg uppercase tracking-widest italic ${isPremium?'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20':'bg-zinc-800 text-zinc-500 border border-zinc-700'}">${isPremium?'Premium Active':'Free Account'}</span>
+                    <span class="px-3 py-1 bg-zinc-800/50 text-zinc-500 text-[10px] font-black rounded-lg uppercase tracking-widest italic border border-zinc-800">Tanzania (TZ)</span>
+                  </div>
+                </div>
+              </div>
+              ${isPremium && subscriptionExpiry ? `
+              <div class="p-8 rounded-[2.5rem] bg-gradient-to-br from-indigo-900/20 to-zinc-900/50 border border-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-8 shadow-xl">
+                <div class="space-y-2 text-center md:text-left"><h3 class="text-xl font-black italic uppercase tracking-tight text-indigo-400">Time imebaki</h3><p class="text-zinc-400 text-[10px] font-bold uppercase tracking-widest">Unalo Bundle la Mwezi. Endelea ku-enjoy!</p></div>
+                <div class="flex gap-2 countdown-timer" data-expiry="${subscriptionExpiry}"></div>
+              </div>` : `
+              <button onclick="navigate('Unlock')" class="w-full p-8 rounded-[2.5rem] bg-brand-blue text-white flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl shadow-brand-blue/20 group">
+                <div class="text-center md:text-left space-y-1"><h3 class="text-2xl font-black italic uppercase tracking-tighter">Fungua Channel Zote Sasa</h3><p class="opacity-80 font-bold text-xs uppercase tracking-widest">Pata Sports, Movies na Katuni katika HD kwa Tsh. 2,000 tu!</p></div>
+                <div class="px-8 py-4 bg-white/20 backdrop-blur-md rounded-2xl font-black uppercase text-[11px] tracking-widest italic group-hover:bg-white/30 transition-all">Angalia Bundles</div>
+              </button>`}
+              <div class="grid md:grid-cols-2 gap-8 pt-4">
+                <div class="space-y-4">
+                  <h4 class="text-[10px] font-black uppercase italic tracking-[0.3em] text-zinc-600 px-2 leading-none">Activity & History</h4>
+                  <div class="space-y-2">
+                    ${[{icon:'play',label:'Watch History',info:'24 Channels recently watched'},{icon:'bookmark',label:'My Bookmarks',info:'4 Channels saved for later'},{icon:'user',label:'Manage Profiles',info:'Switch or edit your viewing profiles'}].map(item => `
+                    <div class="group p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800 hover:border-brand-blue/50 cursor-pointer transition-all flex items-center justify-between">
+                      <div class="flex items-center gap-5"><div class="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-brand-blue group-hover:bg-brand-blue/10 transition-all shadow-inner"><i data-lucide="${item.icon}" class="w-5 h-5"></i></div>
+                      <div><span class="block text-[11px] font-black uppercase tracking-tight italic">${item.label}</span><span class="block text-[9px] text-zinc-600 font-bold uppercase tracking-widest mt-0.5">${item.info}</span></div></div>
+                      <i data-lucide="chevron-right" class="w-4 h-4 text-zinc-600 group-hover:translate-x-1 group-hover:text-brand-blue transition-all"></i>
+                    </div>`).join('')}
+                  </div>
+                  <div class="pt-6">
+                    <a href="#admin" data-admin-link="true" class="block w-full p-6 rounded-[2.5rem] bg-zinc-950 border-2 border-brand-blue/30 group overflow-hidden relative shadow-2xl cursor-pointer">
+                      <div class="flex items-center gap-5 relative z-10">
+                        <div class="w-14 h-14 rounded-2xl bg-brand-blue/20 flex items-center justify-center text-brand-blue shadow-lg shadow-brand-blue/10"><i data-lucide="bar-chart-3" class="w-7 h-7"></i></div>
+                        <div class="text-left"><span class="block text-md font-black uppercase tracking-tighter italic text-white">Admin Dashboard <span class="w-1.5 h-1.5 bg-brand-blue rounded-full animate-ping inline-block"></span></span><span class="block text-[9px] text-zinc-500 font-bold uppercase tracking-widest leading-none mt-1">Control everything from monitoring to billing</span></div>
+                      </div>
+                      <i data-lucide="chevron-right" class="w-6 h-6 text-brand-blue group-hover:translate-x-2 transition-transform relative z-10 absolute right-6 top-1/2 -translate-y-1/2"></i>
+                      <div class="absolute -right-8 -top-8 p-10 opacity-5 pointer-events-none group-hover:rotate-12 transition-transform duration-700"><i data-lucide="settings" class="w-[180px] h-[180px]"></i></div>
+                    </a>
+                  </div>
+                </div>
+                <div class="space-y-4">
+                  <h4 class="text-[10px] font-black uppercase italic tracking-[0.3em] text-zinc-600 px-2 leading-none">SupaSettings</h4>
+                  <div class="space-y-2">
+                    ${[{icon:'play-circle',label:'Payment Tutorial',info:'Jinsi ya kulipia Bundle yako',action:'openTutorial()'},{icon:'settings',label:'App Settings',info:'Video quality, notification, data saver'},{icon:'info',label:'Billing & Support',info:'Payment methods and help center'},{icon:'shield-check',label:'Privacy & Security',info:'Password, devices and legal'}].map(item => `
+                    <div onclick="${item.action||''}" class="group p-5 rounded-3xl bg-zinc-900/80 border border-zinc-800 hover:border-brand-blue/50 cursor-pointer transition-all flex items-center justify-between">
+                      <div class="flex items-center gap-5"><div class="w-12 h-12 rounded-2xl bg-zinc-800 flex items-center justify-center text-zinc-400 group-hover:text-brand-blue group-hover:bg-brand-blue/10 transition-all shadow-inner"><i data-lucide="${item.icon}" class="w-5 h-5"></i></div>
+                      <div><span class="block text-[11px] font-black uppercase tracking-tight italic">${item.label}</span><span class="block text-[9px] text-zinc-600 font-bold uppercase tracking-widest mt-0.5">${item.info}</span></div></div>
+                      <i data-lucide="chevron-right" class="w-4 h-4 text-zinc-600 group-hover:translate-x-1 group-hover:text-brand-blue transition-all"></i>
+                    </div>`).join('')}
+                  </div>
+                </div>
+              </div>
+              <div class="pt-12 text-center space-y-4">
+                <button class="text-[10px] font-black text-zinc-700 hover:text-brand-blue transition-colors uppercase tracking-[0.3em] active:scale-95 italic">Sign Out of All Devices</button>
+                <p class="text-[8px] font-bold text-zinc-800 uppercase tracking-widest leading-relaxed">Member since January 2026 • Leotena TV Tanzania</p>
+              </div>
+            </div>`;
+        }
+
+        // ==================== BUNDLE SELECTION & PAYMENT ====================
+        function selectBundle(bundleId) {
+            paymentBundle = BUNDLES.find(b => b.id === bundleId);
+            if (paymentBundle) showPaymentModal();
+        }
+
+        function showPaymentModal() {
+            const overlay = document.getElementById('modal-overlay');
+            overlay.innerHTML = `
+            <div class="absolute inset-0 bg-black/90 backdrop-blur-xl" onclick="closePaymentModal()"></div>
+            <div class="relative w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-[2.5rem] overflow-hidden shadow-[0_0_100px_rgba(0,0,0,0.5)] slide-up" id="payment-modal-content">
+              <div class="p-8 space-y-8" id="payment-step-input">
+                <div class="flex justify-between items-start">
+                  <div><h2 class="text-3xl font-black uppercase italic tracking-tighter leading-tight">Confirm <span class="text-brand-blue">Malipo</span></h2>
+                  <div class="flex items-center gap-2 mt-1"><div class="w-1.5 h-1.5 bg-brand-blue rounded-full animate-pulse"></div><p class="text-zinc-500 text-[10px] font-black uppercase tracking-[0.2em]">${paymentBundle.name} Bundle</p></div></div>
+                  <button onclick="closePaymentModal()" class="p-2.5 hover:bg-zinc-800 rounded-2xl transition-all active:scale-90"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
+                <div class="p-5 bg-zinc-800/40 rounded-3xl border border-zinc-800 flex justify-between items-center shadow-inner">
+                  <span class="text-xs font-black text-zinc-500 uppercase tracking-widest">Kiasi cha Kulipa</span>
+                  <span class="text-2xl font-black italic tracking-tighter text-white">Tsh ${paymentBundle.price}</span>
+                </div>
+                <form onsubmit="handlePaymentSubmit(event)" class="space-y-6">
+                  <div class="space-y-3">
+                    <label class="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 px-1 italic">Ingiza Namba ya Simu (Yote ya Mtandao)</label>
+                    <input id="payment-phone" autofocus required type="tel" placeholder="0XXXXXXXXX" class="w-full bg-zinc-800 border-2 border-zinc-700/50 rounded-3xl py-5 px-8 text-2xl font-black tabular-nums tracking-[0.3em] focus:outline-none focus:border-brand-blue focus:ring-4 focus:ring-brand-blue/10 transition-all placeholder:opacity-20 text-center" oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+                  </div>
+                  <button type="submit" class="w-full py-5 bg-brand-blue text-white font-black rounded-3xl shadow-xl shadow-brand-blue/30 hover:scale-[1.02] active:scale-95 transition-all text-xs uppercase tracking-[0.2em] italic">Pay Now via Mobile</button>
+                </form>
+              </div>
+            </div>`;
+            overlay.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closePaymentModal() {
+            document.getElementById('modal-overlay').classList.add('hidden');
+            paymentBundle = null;
+        }
+
+        function handlePaymentSubmit(e) {
+            e.preventDefault();
+            const phone = document.getElementById('payment-phone').value;
+            if (!phone.startsWith('0') || phone.length < 10) {
+                alert('Tafadhali weka namba ya simu sahihi kuanzia na 0 (mfano: 07xxxxxxxx)');
+                return;
+            }
+            const content = document.getElementById('payment-step-input');
+            content.innerHTML = `
+            <div class="py-16 flex flex-col items-center gap-8 text-center">
+              <div class="relative w-24 h-24"><div class="absolute inset-0 border-4 border-brand-blue/10 rounded-full"></div><div class="absolute inset-0 border-4 border-brand-blue border-t-transparent rounded-full animate-spin"></div><div class="absolute inset-0 flex items-center justify-center"><i data-lucide="play" class="w-8 h-8 text-brand-blue animate-pulse"></i></div></div>
+              <div class="space-y-3"><h3 class="text-2xl font-black uppercase tracking-tight italic">Tunasubiri Malipo...</h3><p class="text-zinc-500 text-[11px] font-black uppercase tracking-widest max-w-[280px] leading-relaxed">System inatuma request kwenye namba ${phone}. Angalia simu yako kisha weka PIN yako kukamilisha.</p></div>
+            </div>`;
+            lucide.createIcons();
+            setTimeout(() => {
+                content.innerHTML = `
+            <div class="py-16 flex flex-col items-center gap-8 text-center">
+              <div class="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(34,197,94,0.3)]"><i data-lucide="unlock" class="w-12 h-12 text-white"></i></div>
+              <div class="space-y-3"><h3 class="text-2xl font-black uppercase tracking-tight text-white italic">YEEES! IMETUDA.</h3><p class="text-zinc-500 text-[11px] font-black uppercase tracking-widest">Karibu Leotena TV Premium. Sasa unaweza kuenjoy Channel zote!</p></div>
+            </div>`;
+                lucide.createIcons();
+                setTimeout(() => {
+                    if (paymentBundle) {
+                        const expiryDate = new Date();
+                        expiryDate.setDate(expiryDate.getDate() + paymentBundle.days);
+                        const expiryStr = expiryDate.toISOString();
+                        localStorage.setItem('supastream_premium', JSON.stringify({ phone, expiry: expiryStr,
+                            bundleId: paymentBundle.id }));
+                        isPremium = true;
+                        subscriptionExpiry = expiryStr;
+                        closePaymentModal();
+                        navigate('Home');
+                        setTimeout(() => location.reload(), 100);
+                    }
+                }, 2000);
+            }, 4000);
+        }
+
+        // ==================== TUTORIAL ====================
+        const TUTORIAL_STEPS = [
+            { id: 0, title: "Chagua Kifurushi",
+                description: "Anza kwa kuchagua bundle unayopenda. Unaweza kuchagua Almasi, Dhahabu au ile ya Platinum.",
+                voiceText: "Karibu Leotena TV. Hatua ya kwanza, chagua kifurushi unachopenda kati ya Almasi, Dhahabu au Platinum.",
+                icon: 'tv' },
+            { id: 1, title: "Bonyeza Lipia",
+                description: "Ukishapata bundle yako, bonyeza kitufe cha 'Subscribe Now' ili kuendelea.",
+                voiceText: "Ukishachagua, bonyeza kitufe cha Subscribe Now ili kuanza mchakato wa malipo.", icon: 'play' },
+            { id: 2, title: "Weka Namba yako",
+                description: "Ingiza namba yako ya simu ya mkononi. Hakikisha inaanza na namba sifuri.",
+                voiceText: "Sasa, ingiza namba yako ya simu ya mkononi hapa. Hakikisha namba yako inaanza na sifuri.",
+                icon: 'smartphone' },
+            { id: 3, title: "Subiri Ujumbe",
+                description: "Utapokea ujumbe kwenye simu yako punde tu. Usiondoke kwenye app bado.",
+                voiceText: "Subiri kidogo. Utapokea ujumbe wa malipo kwenye simu yako punde hivi. Usiondoke kwenye app.",
+                icon: 'credit-card' },
+            { id: 4, title: "Weka PIN yako",
+                description: "Ingiza PIN ya mtandao wako kwenye simu yako ili kukamilisha malipo kwa usalama.",
+                voiceText: "Ujumbe ukifika, ingiza namba yako ya siri ya mtandao wako kwenye simu yako ili kukamilisha malipo.",
+                icon: 'fingerprint' },
+            { id: 5, title: "Enjoy Burudani!",
+                description: "Tayari! Channel zote zimefunguka. Karibu u-enjoy soka na movies bora duniani.",
+                voiceText: "Hongera sana! Sasa channel zote ziko wazi. Karibu u-enjoy soka na movies bora duniani hapa Leotena TV.",
+                icon: 'check-circle-2' },
+        ];
+
+        function openTutorial() {
+            tutorialStep = 0;
+            showTutorial = true;
+            renderTutorial();
+            document.getElementById('tutorial-overlay').classList.remove('hidden');
+        }
+
+        function closeTutorial() {
+            showTutorial = false;
+            document.getElementById('tutorial-overlay').classList.add('hidden');
+            if (audioSource) { try { audioSource.stop(); } catch (e) {} }
+        }
+
+        function renderTutorial() {
+            const overlay = document.getElementById('tutorial-overlay');
+            const step = TUTORIAL_STEPS[tutorialStep];
+            overlay.innerHTML = `
+            <div class="absolute inset-0 overflow-hidden opacity-20 pointer-events-none">
+              <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-blue rounded-full blur-[120px] animate-pulse"></div>
+              <div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-600 rounded-full blur-[120px] animate-pulse" style="animation-delay:1s"></div>
+            </div>
+            <div class="relative w-full max-w-5xl h-full flex flex-col md:flex-row items-center justify-center gap-12 p-8 pt-20">
+              <button onclick="closeTutorial()" class="absolute top-8 right-8 p-3 bg-zinc-900 border border-zinc-800 rounded-2xl hover:bg-zinc-800 transition-all text-white/50 hover:text-white"><i data-lucide="x" class="w-6 h-6"></i></button>
+              <div class="relative w-full md:w-[400px] aspect-[9/19.5] max-h-[85vh] bg-zinc-950 rounded-[3.5rem] border-[8px] border-zinc-900 shadow-[0_0_80px_rgba(0,0,0,0.5)] overflow-hidden ring-4 ring-zinc-900/50">
+                <div class="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-8 bg-zinc-900 rounded-b-3xl z-50 flex items-center justify-center"><div class="w-12 h-1 bg-zinc-800 rounded-full"></div></div>
+                <div id="tutorial-phone-content" class="absolute inset-0 flex flex-col pt-12 pb-8 px-6 fade-in">${renderTutorialStepPhone(tutorialStep)}</div>
+                <div class="absolute bottom-0 left-0 right-0 h-1 bg-zinc-900"><div class="h-full bg-brand-blue shadow-[0_0_10px_rgba(0,183,255,1)] transition-all duration-500" style="width:${((tutorialStep+1)/TUTORIAL_STEPS.length)*100}%"></div></div>
+              </div>
+              <div class="flex-1 space-y-10 max-w-md">
+                <div class="space-y-4">
+                  <span class="px-4 py-1.5 bg-brand-blue/10 border border-brand-blue/20 rounded-full text-brand-blue text-[10px] font-black uppercase tracking-[0.3em] inline-block mb-2">Tutorial: Mafunzo ya Malipo</span>
+                  <div class="space-y-6 fade-in" id="tutorial-text-content">
+                    <div class="flex items-center gap-4"><div class="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center text-brand-blue border border-zinc-800 shadow-xl"><i data-lucide="${step.icon}" class="w-7 h-7"></i></div><h2 class="text-4xl font-black italic uppercase tracking-tighter leading-none">${step.title}</h2></div>
+                    <p class="text-lg text-zinc-400 font-medium leading-relaxed">${step.description}</p>
+                  </div>
+                </div>
+                <div class="space-y-4 pt-10 border-t border-zinc-800/50">
+                  <div class="flex gap-2">${TUTORIAL_STEPS.map((_,i) => `<button onclick="goToTutorialStep(${i})" class="h-1.5 rounded-full transition-all duration-500 ${i===tutorialStep?'w-10 bg-brand-blue':'w-4 bg-zinc-800 hover:bg-zinc-700'}"></button>`).join('')}</div>
+                  <div class="flex items-center gap-4">
+                    <button onclick="toggleTutorialAudio()" class="w-14 h-14 bg-white text-black rounded-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl"><i data-lucide="${tutorialPlaying?'x':'play'}" class="w-6 h-6 ${tutorialPlaying?'':'fill-black'}"></i></button>
+                    <button onclick="toggleTutorialMute()" class="w-14 h-14 rounded-2xl flex items-center justify-center transition-all bg-zinc-800 border ${tutorialMuted?'border-red-500/50 text-red-500':'border-zinc-700 text-zinc-400'}"><i data-lucide="${tutorialMuted?'volume-x':'volume-2'}" class="w-6 h-6"></i></button>
+                    <button onclick="nextTutorialStep()" class="flex-1 h-14 bg-zinc-800 border border-zinc-700 rounded-2xl flex items-center justify-center gap-2 font-black uppercase text-[10px] tracking-widest hover:bg-zinc-700 transition-all text-white">${tutorialStep<TUTORIAL_STEPS.length-1?'Mbele <i data-lucide="arrow-right" class="w-4 h-4"></i>':'Kamilisha <i data-lucide="trophy" class="w-4 h-4"></i>'}</button>
+                  </div>
+                </div>
+                <div class="bg-zinc-900/50 p-6 rounded-3xl border border-zinc-800 space-y-2">
+                  <div class="flex items-center gap-3"><div class="w-8 h-8 bg-zinc-800 rounded-lg flex items-center justify-center"><i data-lucide="smartphone" class="w-4 h-4 text-brand-blue"></i></div><span class="text-[10px] font-black uppercase tracking-widest text-zinc-400 leading-none">Je, unajua?</span></div>
+                  <p class="text-[11px] text-zinc-500 font-bold uppercase tracking-wider leading-relaxed">Unaweza kujiunga ukitumia mitandao yote mikubwa kama Vodacom (M-Pesa), Tigo (TigoPesa), Airtel (AirtelMoney) na Halopesa.</p>
+                </div>
+              </div>
+            </div>`;
+            lucide.createIcons();
+            if (tutorialPlaying && !tutorialMuted) playTutorialVoice(tutorialStep);
+        }
+
+        function renderTutorialStepPhone(step) {
+            switch (step) {
+                case 0:
+                    return `
+                <div class="space-y-6"><div class="flex justify-center py-4"><i data-lucide="tv" class="w-16 h-16 text-brand-blue"></i></div>
+                <div class="space-y-4"><div class="h-20 bg-zinc-900 rounded-2xl border border-brand-blue/30 p-4 relative overflow-hidden"><div class="w-1/2 h-4 bg-brand-blue/20 rounded mb-2"></div><div class="w-1/3 h-2 bg-zinc-800 rounded"></div><div class="absolute top-1/2 right-4 -translate-y-1/2 w-4 h-4 bg-brand-blue rounded-full pulse-ring"></div></div>
+                <div class="h-20 bg-zinc-900 rounded-2xl border border-zinc-800 p-4"><div class="w-1/2 h-4 bg-zinc-800 rounded mb-2"></div><div class="w-1/3 h-2 bg-zinc-800 rounded"></div></div></div></div>`;
+                case 1:
+                    return `
+                <div class="h-full flex flex-col justify-center items-center gap-8"><div class="relative"><button class="px-10 py-5 bg-brand-blue rounded-2xl text-white font-black uppercase tracking-widest text-xs italic shadow-2xl shadow-brand-blue/30">Subscribe Now</button><div class="absolute -bottom-4 right-4 animate-bounce"><i data-lucide="play" class="w-8 h-8 fill-white text-white"></i></div></div><p class="text-center text-zinc-500 text-[10px] font-bold uppercase tracking-wider max-w-[200px]">Bonyeza mara moja tu kufungua kila kitu</p></div>`;
+                case 2:
+                    return `
+                <div class="space-y-8"><div class="text-center space-y-2"><h4 class="text-lg font-black italic uppercase tracking-tighter">Thibitisha Malipo</h4><div class="w-8 h-1 bg-brand-blue mx-auto rounded-full"></div></div>
+                <div class="space-y-4"><div class="h-14 bg-zinc-900 rounded-2xl border border-zinc-800 p-4 flex items-center"><div class="text-lg font-black tracking-[0.2em]">0754 123 456</div></div><div class="h-14 bg-brand-blue rounded-2xl flex items-center justify-center font-black uppercase text-xs tracking-widest">Pay Now</div></div></div>`;
+                case 3:
+                    return `
+                <div class="h-full relative"><div class="absolute top-20 left-0 right-0 p-4 bg-zinc-900/90 backdrop-blur-md rounded-2xl border border-white/20 shadow-2xl space-y-2 animate-bounce"><div class="flex items-center gap-2"><i data-lucide="smartphone" class="w-4 h-4 text-brand-blue"></i><span class="text-[10px] font-black uppercase tracking-wider text-zinc-400">Ombi la Malipo</span></div><p class="text-xs font-bold leading-tight">Lipia Tsh 2,000 kwenda LEOTENA TV? Weka PIN kukubali.</p></div><div class="absolute inset-0 flex flex-col items-center justify-center opacity-10"><i data-lucide="smartphone" class="w-[200px] h-[200px]"></i></div></div>`;
+                case 4:
+                    return `
+                <div class="h-full flex flex-col items-center justify-center gap-8"><div class="grid grid-cols-3 gap-4">${[1,2,3,4,5,6,7,8,9,'*','0','#'].map(n => `<div class="w-12 h-12 rounded-full border border-zinc-800 flex items-center justify-center font-black text-lg">${n}</div>`).join('')}</div><div class="flex gap-4">${[1,2,3,4].map(() => `<div class="w-4 h-4 rounded-full bg-brand-blue shadow-[0_0_15px_rgba(0,183,255,0.5)]"></div>`).join('')}</div></div>`;
+                case 5:
+                    return `
+                <div class="h-full flex flex-col items-center justify-center gap-8 text-center"><div class="w-32 h-32 bg-green-500 rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(34,197,94,0.4)]"><i data-lucide="check-circle-2" class="w-16 h-16 text-white"></i></div><div class="space-y-4"><h3 class="text-3xl font-black italic uppercase tracking-tighter">IMETIKI!</h3><div class="px-6 py-3 bg-zinc-900 border border-zinc-800 rounded-2xl text-[10px] font-black uppercase tracking-widest text-brand-blue">Kifurushi Kiko Tayari</div></div></div>`;
+                default:
+                    return '';
+            }
+        }
+
+        function goToTutorialStep(i) {
+            tutorialStep = i;
+            renderTutorial();
+            if (tutorialPlaying && !tutorialMuted) playTutorialVoice(i);
+        }
+
+        function nextTutorialStep() {
+            if (tutorialStep < TUTORIAL_STEPS.length - 1) {
+                tutorialStep++;
+                renderTutorial();
+                if (tutorialPlaying && !tutorialMuted) playTutorialVoice(tutorialStep);
+            } else {
+                closeTutorial();
+            }
+        }
+
+        function toggleTutorialAudio() {
+            tutorialPlaying = !tutorialPlaying;
+            if (!tutorialPlaying && audioSource) { try { audioSource.stop(); } catch (e) {} }
+            if (tutorialPlaying && !tutorialMuted) playTutorialVoice(tutorialStep);
+            renderTutorial();
+        }
+
+        function toggleTutorialMute() {
+            tutorialMuted = !tutorialMuted;
+            if (tutorialMuted && audioSource) { try { audioSource.stop(); } catch (e) {} }
+            if (!tutorialMuted && tutorialPlaying) playTutorialVoice(tutorialStep);
+            renderTutorial();
+        }
+
+        async function playTutorialVoice(stepIndex) {
+            try {
+                const text = TUTORIAL_STEPS[stepIndex].voiceText;
+                const response = await fetch(
+                    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-goog-api-key': window.GEMINI_API_KEY || ''
+                        },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: text }] }],
+                            generationConfig: { responseModalities: ['AUDIO'] }
+                        })
+                    });
+                if (!response.ok) return;
+                const data = await response.json();
+                const base64Audio = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData?.mimeType
+                    ?.startsWith('audio/'))?.inlineData?.data;
+                if (base64Audio && tutorialPlaying && !tutorialMuted) playPCM(base64Audio);
+            } catch (e) {
+                console.log('TTS unavailable in browser demo:', e.message);
+            }
+        }
+
+        function playPCM(base64Data) {
+            try {
+                if (!audioContext) audioContext = new(window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+                const binaryString = atob(base64Data);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+                const pcmData = new Int16Array(bytes.buffer);
+                const audioBuffer = audioContext.createBuffer(1, pcmData.length, 24000);
+                const channelData = audioBuffer.getChannelData(0);
+                for (let i = 0; i < pcmData.length; i++) channelData[i] = pcmData[i] / 32768;
+                if (audioSource) { try { audioSource.stop(); } catch (e) {} }
+                audioSource = audioContext.createBufferSource();
+                audioSource.buffer = audioBuffer;
+                audioSource.connect(audioContext.destination);
+                audioSource.start();
+            } catch (e) { console.log('Audio playback error:', e.message); }
+        }
+
+        // ==================== ADMIN DASHBOARD ====================
+        function renderAdminDashboard() {
+            const container = document.getElementById('admin-app');
+            container.innerHTML = `
+            <nav class="w-20 bg-[#0f0f12] border border-white/5 rounded-[2.5rem] flex flex-col items-center py-8 gap-8 shadow-2xl shrink-0">
+              <div class="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white italic text-2xl font-black shadow-lg shadow-blue-600/20">S</div>
+              <div class="flex-1 flex flex-col gap-4">
+                ${[{icon:'layout-dashboard',active:true},{icon:'tv'},{icon:'users'},{icon:'credit-card'},{icon:'globe'},{icon:'settings'}].map((item,i) => `
+                <button class="w-12 h-12 rounded-2xl flex items-center justify-center transition-all group ${item.active?'bg-white/10 text-white shadow-inner':'text-zinc-600 hover:text-white hover:bg-white/5'}"><i data-lucide="${item.icon}" class="w-5 h-5"></i></button>`).join('')}
+              </div>
+              <a href="#" onclick="window.location.hash='';return false;" class="w-12 h-12 bg-zinc-800 rounded-2xl flex items-center justify-center text-blue-400 hover:bg-blue-600 hover:text-white transition-all group"><i data-lucide="play" class="w-5 h-5"></i></a>
+            </nav>
+            <main class="flex-1 flex flex-col gap-4 overflow-hidden">
+              <header class="flex items-center justify-between px-4 h-12 shrink-0">
+                <div class="flex items-center gap-8">
+                  <h1 class="text-xl font-black italic tracking-tighter uppercase leading-none">Command <span class="text-blue-500">Center</span></h1>
+                  <div class="hidden md:flex items-center gap-3 bg-zinc-900/50 px-4 py-2 rounded-full border border-white/5 cursor-pointer"><i data-lucide="search" class="w-3.5 h-3.5 text-zinc-500"></i><span class="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Universal Query Engine...</span></div>
+                </div>
+                <div class="flex items-center gap-6">
+                  <div class="flex items-center gap-2"><div class="w-2 h-2 bg-green-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div><span class="text-[10px] font-black uppercase text-zinc-500 italic tracking-widest">Nodes Active</span></div>
+                  <div class="w-10 h-10 rounded-xl bg-zinc-800 flex items-center justify-center border border-white/10 overflow-hidden"><span class="text-xs font-black italic">AD</span></div>
+                </div>
+              </header>
+              <div class="flex-1 grid grid-cols-12 grid-rows-6 gap-4 min-h-0 overflow-y-auto pr-1">
+                <div class="bg-[#0f0f12] border border-white/5 rounded-[2rem] p-6 flex flex-col gap-4 shadow-xl col-span-12 lg:col-span-8 row-span-3 relative overflow-hidden">
+                  <div class="flex items-center justify-between relative z-10"><h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 italic">Performance Growth</h3><i data-lucide="trending-up" class="w-3.5 h-3.5 text-zinc-700"></i></div>
+                  <div class="flex-1 relative z-10 flex flex-col">
+                    <div class="flex items-baseline gap-2 mb-4"><span class="text-4xl font-black italic tracking-tighter leading-none">Tsh 4.2M</span><span class="text-[10px] font-black text-green-500 uppercase">+12% This Period</span></div>
+                    <div class="flex-1 -mx-4"><svg viewBox="0 0 400 150" class="w-full h-full"><defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stop-color="#3b82f6" stop-opacity="0.2"/><stop offset="95%" stop-color="#3b82f6" stop-opacity="0"/></linearGradient></defs><path d="M0,120 L57,100 L114,110 L171,80 L228,60 L285,30 L342,40 L400,35 L400,150 L0,150 Z" fill="url(#grad)" stroke="#3b82f6" stroke-width="4" fill="none"/></svg></div>
+                  </div>
+                </div>
+                <div class="bg-[#0f0f12] border border-white/5 rounded-[2rem] p-6 flex flex-col gap-4 shadow-xl col-span-12 lg:col-span-4 row-span-6 relative overflow-hidden">
+                  <div class="flex items-center justify-between relative z-10"><h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 italic">Live Activity Feed</h3><i data-lucide="activity" class="w-3.5 h-3.5 text-zinc-700"></i></div>
+                  <div class="flex flex-col h-full gap-4 relative z-10">
+                    <div class="space-y-3 overflow-y-auto pr-2 flex-1" style="max-height:calc(100vh - 350px)">
+                      ${TRANSACTIONS.map(tx => `
+                      <div class="p-4 bg-white/[0.02] border border-white/5 rounded-2xl flex items-center justify-between hover:bg-white/[0.05] transition-all">
+                        <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg flex items-center justify-center ${tx.status==='Success'?'bg-green-500/10 text-green-500':'bg-orange-500/10 text-orange-500'}"><i data-lucide="${tx.status==='Success'?'check-circle-2':'alert-circle'}" class="w-4 h-4"></i></div>
+                        <div><span class="block text-[10px] font-black uppercase italic leading-none">${tx.user}</span><span class="text-[8px] text-zinc-600 font-bold uppercase mt-1">${tx.method} payment</span></div></div>
+                        <span class="text-[10px] font-black italic">+${tx.amount}</span>
+                      </div>`).join('')}
+                      ${[1,2,3,4].map(() => `
+                      <div class="p-4 bg-white/[0.01] border border-white/5 rounded-2xl flex items-center gap-3 opacity-40"><div class="w-8 h-8 bg-zinc-900 rounded-lg flex items-center justify-center"><i data-lucide="users" class="w-4 h-4"></i></div><div class="flex-1"><div class="h-2 w-1/2 bg-zinc-800 rounded-full"></div></div></div>`).join('')}
+                    </div>
+                    <button class="py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-600/20 active:scale-95 transition-all">Export Report (.PDF)</button>
+                  </div>
+                </div>
+                <div class="col-span-12 lg:col-span-8 row-span-1 grid grid-cols-4 gap-4">
+                  ${[{label:'Latency',val:'24ms',icon:'globe',color:'text-blue-500'},{label:'Uptime',val:'99.9%',icon:'server',color:'text-indigo-400'},{label:'CPU Load',val:'32%',icon:'activity',color:'text-teal-400'},{label:'Revenue',val:'12K+',icon:'wallet',color:'text-green-500'}].map(stat => `
+                  <div class="bg-[#0f0f12] border border-white/5 rounded-2xl p-4 flex items-center gap-3 group hover:bg-white/[0.02] transition-all">
+                    <div class="p-2 rounded-xl bg-white/[0.03] ${stat.color} group-hover:scale-110 transition-transform"><i data-lucide="${stat.icon}" class="w-4 h-4"></i></div>
+                    <div><span class="block text-[8px] font-black uppercase text-zinc-600 leading-none">${stat.label}</span><span class="block text-sm font-black italic text-zinc-200 mt-1">${stat.val}</span></div>
+                  </div>`).join('')}
+                </div>
+                <div class="bg-[#0f0f12] border border-white/5 rounded-[2rem] p-6 flex flex-col gap-4 shadow-xl col-span-12 lg:col-span-8 row-span-2 relative overflow-hidden">
+                  <div class="flex items-center justify-between relative z-10"><h3 class="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500 italic">Rapid Channel Controls</h3><i data-lucide="tv" class="w-3.5 h-3.5 text-zinc-700"></i></div>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-3 h-full overflow-y-auto pr-1 relative z-10">
+                    ${ADMIN_CHANNELS.map(ch => `
+                    <div class="p-4 bg-white/[0.02] border border-white/5 rounded-[1.5rem] flex items-center justify-between gap-4 group hover:border-blue-500/30 transition-all">
+                      <div class="flex items-center gap-3 truncate">
+                        <div class="w-10 h-10 aspect-square bg-zinc-800 rounded-xl overflow-hidden shrink-0 border border-white/5"><img src="https://picsum.photos/seed/mini${ch.id}/60/60" class="w-full h-full object-cover" alt=""></div>
+                        <div class="truncate"><span class="block text-[10px] font-black uppercase italic tracking-tight truncate leading-none mb-1">${ch.name}</span><span class="text-[8px] font-bold text-zinc-600 uppercase tracking-widest">${ch.viewers} LIVE</span></div>
+                      </div>
+                      <div class="flex items-center gap-2 shrink-0">
+                        <button class="p-2 rounded-xl transition-all ${ch.locked?'bg-red-500/10 text-red-500':'bg-green-500/10 text-green-500 hover:bg-green-500/20'}"><i data-lucide="${ch.locked?'lock':'unlock'}" class="w-3 h-3"></i></button>
+                        <button class="p-2 rounded-xl bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-white transition-all"><i data-lucide="rotate-ccw" class="w-3 h-3"></i></button>
+                      </div>
+                    </div>`).join('')}
+                  </div>
+                </div>
+              </div>
+            </main>`;
+            lucide.createIcons();
+            // Start countdown timers
+            startAllCountdowns();
+        }
+
+        // ==================== COUNTDOWN TIMER ====================
+        function startAllCountdowns() {
+            document.querySelectorAll('.countdown-timer').forEach(el => {
+                const expiry = el.dataset.expiry;
+                if (!expiry) return;
+                const update = () => {
+                    const now = new Date().getTime();
+                    const distance = new Date(expiry).getTime() - now;
+                    if (distance <= 0) { el.innerHTML =
+                            '<span class="text-red-500 text-xs font-black">EXPIRED</span>'; return; }
+                    const d = Math.floor(distance / (1000 * 60 * 60 * 24));
+                    const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                    const s = Math.floor((distance % (1000 * 60)) / 1000);
+                    el.innerHTML = `
+                    <div class="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg w-16"><span class="text-xl font-black tabular-nums tracking-tighter">${String(d).padStart(2,'0')}</span><span class="text-[8px] uppercase font-bold text-zinc-500">Siku</span></div>
+                    <div class="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg w-16"><span class="text-xl font-black tabular-nums tracking-tighter">${String(h).padStart(2,'0')}</span><span class="text-[8px] uppercase font-bold text-zinc-500">Masaa</span></div>
+                    <div class="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg w-16"><span class="text-xl font-black tabular-nums tracking-tighter">${String(m).padStart(2,'0')}</span><span class="text-[8px] uppercase font-bold text-zinc-500">Dakika</span></div>
+                    <div class="flex flex-col items-center bg-zinc-900 border border-zinc-800 p-2 rounded-lg w-16"><span class="text-xl font-black tabular-nums tracking-tighter">${String(s).padStart(2,'0')}</span><span class="text-[8px] uppercase font-bold text-zinc-500">Sekunde</span></div>`;
+                };
+                update();
+                setInterval(update, 1000);
+            });
+        }
+
+        // ==================== INITIALIZATION ====================
+        function init() {
+            checkHash();
+            if (!window.location.hash || window.location.hash === '') {
+                renderMainContent();
+                updateNavStyles();
+                startHeroCarousel();
+            }
+            lucide.createIcons();
+            startAllCountdowns();
+        }
+
+        // Handle admin link clicks
+        document.addEventListener('click', (e) => {
+            const adminLink = e.target.closest('[data-admin-link]');
+            if (adminLink) {
+                e.preventDefault();
+                window.location.hash = '#admin';
+            }
+        });
+
+        // Initial render
+        init();
+
+        // Re-render on hash change
+        window.addEventListener('hashchange', () => {
+            checkHash();
+            if (!window.location.hash || window.location.hash === '') {
+                renderMainContent();
+                updateNavStyles();
+                startHeroCarousel();
+                startAllCountdowns();
+            }
+        });
+
+        // Global functions for onclick handlers
+        window.navigate = navigate;
+        window.selectBundle = selectBundle;
+        window.closePaymentModal = closePaymentModal;
+        window.handlePaymentSubmit = handlePaymentSubmit;
+        window.openTutorial = openTutorial;
+        window.closeTutorial = closeTutorial;
+        window.goToTutorialStep = goToTutorialStep;
+        window.nextTutorialStep = nextTutorialStep;
+        window.toggleTutorialAudio = toggleTutorialAudio;
+        window.toggleTutorialMute = toggleTutorialMute;
+
+        console.log('🚀 Leotena TV loaded successfully! All systems ready.');
+        console.log('📱 Main App: # (default) | 🔧 Admin: #admin');
+    </script>
+</body>
+</html>
