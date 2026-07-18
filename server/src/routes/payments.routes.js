@@ -82,9 +82,15 @@ router.post(
       });
     }
 
-    // Local-only zero-amount path: no Sonic errors, instant premium for plan days.
-    if (localPaymentsAllowed() || !sonicpesaConfigured()) {
+    // Dev-only zero-amount path (ALLOW_LOCAL_PAYMENTS=true). Production always uses SonicPesa.
+    if (localPaymentsAllowed()) {
       return respondLocalComplete(req, res, { deviceId, planId, userName, localPhone });
+    }
+
+    if (!sonicpesaConfigured()) {
+      return res.status(503).json({
+        error: 'Malipo hayajasanidi kwenye seva. Wasiliana na msaada.',
+      });
     }
 
     const plan = await prisma.pricingPlan.findUnique({ where: { id: planId } });
@@ -108,19 +114,12 @@ router.post(
       });
     } catch (e) {
       console.error('sonicpesaCreateOrder threw', e);
-      // Soft fallback — never leave the user stuck if gateway errors.
-      if (localPaymentsAllowed()) {
-        return respondLocalComplete(req, res, { deviceId, planId, userName, localPhone });
-      }
       return res.status(503).json({
         error: 'Seva ya malipo haipatikani kwa sasa. Jaribu tena baada ya dakika moja.',
       });
     }
 
     if (!order.ok || !order.order_id) {
-      if (localPaymentsAllowed()) {
-        return respondLocalComplete(req, res, { deviceId, planId, userName, localPhone });
-      }
       const unreachable =
         order.error?.toLowerCase().includes('unreachable') ||
         order.error?.toLowerCase().includes('timed out');

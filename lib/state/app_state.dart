@@ -333,8 +333,9 @@ class AppState extends ChangeNotifier {
       planId: pkg.id,
     );
 
-    // Local TSh 0 path completes in the initiate response — unlock immediately.
-    if (init.completed) {
+    // Only unlock immediately for explicit local/dev completes — never for a
+    // pending SonicPesa USSD push (user must enter PIN first).
+    if (init.completed && init.local) {
       DateTime? until = init.premiumUntil;
       if (init.deviceJson != null) {
         _applyDeviceStatus(init.deviceJson!);

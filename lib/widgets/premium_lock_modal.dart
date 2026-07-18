@@ -149,7 +149,10 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
       final init = await state.initiateSonicPayment(pkg: pkg, name: name, phone: phone);
       if (!mounted || _page != 3) return;
 
-      if (init.completed) {
+      // Never unlock on initiate alone — wait for PIN confirmation via status polling.
+      // (Local TSh-0 complete is disabled in production.)
+      if (init.completed && init.local) {
+        // Dev-only path if ALLOW_LOCAL_PAYMENTS is enabled on a local server.
         await _markPaymentSuccess();
         return;
       }

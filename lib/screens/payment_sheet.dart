@@ -197,7 +197,7 @@ class _PaymentSheetState extends State<PaymentSheet> {
       final init = await state.initiateSonicPayment(pkg: selectedPkg, name: name, phone: phone);
       if (!mounted) return;
 
-      if (init.completed) {
+      if (init.completed && init.local) {
         Navigator.of(context).pop();
         SuccessModal.show(
           context,

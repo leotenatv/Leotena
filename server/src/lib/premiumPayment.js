@@ -243,12 +243,12 @@ async function completeLocalZeroPayment(input) {
 }
 
 function localPaymentsAllowed() {
-  const flag = String(process.env.ALLOW_LOCAL_PAYMENTS || process.env.LOCAL_PAYMENTS_ONLY || '')
+  // Explicit opt-in only. Never auto-complete checkout just because Sonic keys are missing —
+  // Lipia sasa must send a real USSD push and wait for PIN success.
+  const flag = String(process.env.ALLOW_LOCAL_PAYMENTS || '')
     .trim()
     .toLowerCase();
-  if (flag === '1' || flag === 'true' || flag === 'yes') return true;
-  // Until Sonic keys are set, keep checkout working with amount 0 (no gateway errors).
-  return !String(process.env.SONICPESA_API_KEY || '').trim();
+  return flag === '1' || flag === 'true' || flag === 'yes';
 }
 
 module.exports = {
