@@ -21,6 +21,7 @@ class AdminState extends ChangeNotifier {
   List<AdminCarouselSlide> _slides = [];
   List<AppUser> _users = [];
   List<SubscriptionRecord> _subscriptions = [];
+  List<NotificationLog> _notifications = [];
 
   bool loadingChannels = false;
   bool loadingSchedule = false;
@@ -28,6 +29,7 @@ class AdminState extends ChangeNotifier {
   bool loadingPlans = false;
   bool loadingUsers = false;
   bool loadingSubscriptions = false;
+  bool loadingNotifications = false;
 
   String? channelsError;
   String? scheduleError;
@@ -35,6 +37,7 @@ class AdminState extends ChangeNotifier {
   String? plansError;
   String? usersError;
   String? subscriptionsError;
+  String? notificationsError;
 
   bool get loggedIn => _loggedIn;
   bool get booting => _booting;
@@ -48,6 +51,7 @@ class AdminState extends ChangeNotifier {
   List<AdminScheduleItem> get schedule => List.unmodifiable(_schedule);
   List<AppUser> get users => List.unmodifiable(_users);
   List<SubscriptionRecord> get subscriptions => List.unmodifiable(_subscriptions);
+  List<NotificationLog> get notifications => List.unmodifiable(_notifications);
 
   List<AdminCarouselSlide> get slides {
     final list = List<AdminCarouselSlide>.from(_slides);
@@ -139,6 +143,7 @@ class AdminState extends ChangeNotifier {
     _slides = [];
     _users = [];
     _subscriptions = [];
+    _notifications = [];
     notifyListeners();
   }
 
@@ -151,6 +156,7 @@ class AdminState extends ChangeNotifier {
       _loadPlans(),
       _loadUsers(),
       _loadSubscriptions(),
+      _loadNotifications(),
     ]);
   }
 
@@ -242,6 +248,20 @@ class AdminState extends ChangeNotifier {
       subscriptionsError = e.message;
     } finally {
       loadingSubscriptions = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _loadNotifications() async {
+    loadingNotifications = true;
+    notifyListeners();
+    try {
+      _notifications = await _repo.getNotifications();
+      notificationsError = null;
+    } on ApiException catch (e) {
+      notificationsError = e.message;
+    } finally {
+      loadingNotifications = false;
       notifyListeners();
     }
   }
@@ -513,6 +533,19 @@ class AdminState extends ChangeNotifier {
   Future<void> deleteSubscription(String id) async {
     await _repo.deleteSubscription(id);
     _subscriptions = _subscriptions.where((s) => s.id != id).toList();
+    notifyListeners();
+  }
+
+  // ── Notifications (Arifa) ───────────────────────────────────
+  Future<void> sendNotification(String title, String body) async {
+    final log = await _repo.sendNotification(title, body);
+    _notifications = [log, ..._notifications];
+    notifyListeners();
+  }
+
+  Future<void> deleteNotification(String id) async {
+    await _repo.deleteNotification(id);
+    _notifications = _notifications.where((n) => n.id != id).toList();
     notifyListeners();
   }
 

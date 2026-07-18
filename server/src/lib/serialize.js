@@ -100,6 +100,17 @@ function serializeDevice(row) {
   };
 }
 
+function serializeNotificationLog(row) {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    successCount: row.successCount,
+    failureCount: row.failureCount,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
 function serializeSubscription(row) {
   return {
     id: row.id,
@@ -121,5 +132,6 @@ module.exports = {
   serializePricing,
   serializeDevice,
   serializeSubscription,
+  serializeNotificationLog,
   hasPremiumAccess,
 };

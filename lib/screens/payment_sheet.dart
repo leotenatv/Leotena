@@ -5,6 +5,8 @@ import '../theme/app_theme.dart';
 import '../state/app_state.dart';
 import '../models/models.dart';
 import '../utils/payment_voices.dart';
+import '../data/payment_config.dart';
+import '../data/sonicpesa_payment_service.dart';
 import '../widgets/common.dart';
 
 /// Centered animated success modal (no native dialogs / alerts anywhere).
@@ -137,6 +139,7 @@ class _PaymentSheetState extends State<PaymentSheet> {
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   String? _error;
+  bool _paying = false;
 
   @override
   void initState() {
@@ -146,6 +149,11 @@ class _PaymentSheetState extends State<PaymentSheet> {
       final state = context.read<AppState>();
       if (state.userName != 'Mtumiaji') _nameCtrl.text = state.userName;
       if (state.phoneNumber.isNotEmpty) _phoneCtrl.text = state.phoneNumber;
+      final pkgs = widget.packages;
+      if (pkgs.isNotEmpty) {
+        final popular = pkgs.where((p) => p.popular);
+        _selected = popular.isNotEmpty ? popular.first.id : pkgs.first.id;
+      }
       await PaymentVoices.playAsset(PaymentVoices.packageAsset);
     });
   }
@@ -158,7 +166,8 @@ class _PaymentSheetState extends State<PaymentSheet> {
     super.dispose();
   }
 
-  void _submit(SubscriptionPackage selectedPkg) {
+  Future<void> _submit(SubscriptionPackage selectedPkg) async {
+    if (_paying) return;
     final name = _nameCtrl.text.trim();
     final phone = _phoneCtrl.text.trim();
     if (name.isEmpty || phone.isEmpty) {
@@ -166,19 +175,98 @@ class _PaymentSheetState extends State<PaymentSheet> {
       PaymentVoices.playAsset(PaymentVoices.detailsAsset);
       return;
     }
-    if (phone.length < 9) {
-      setState(() => _error = 'Nambari ya simu si sahihi');
+    if (!PaymentConfig.isValidFullName(name)) {
+      setState(() => _error = 'Tafadhali jaza jina kamili (angalau majina mawili)');
       PaymentVoices.playAsset(PaymentVoices.detailsAsset);
       return;
     }
-    context.read<AppState>().activatePackage(selectedPkg, name: name, phone: phone);
+    if (!PaymentConfig.isValidTzLocalPhone(phone)) {
+      setState(() => _error = 'Namba ya simu si sahihi. Tumia 07…, 06… au 255…');
+      PaymentVoices.playAsset(PaymentVoices.detailsAsset);
+      return;
+    }
+
+    setState(() {
+      _paying = true;
+      _error = PaymentConfig.paymentPromptFor(phone);
+    });
     PaymentVoices.stop();
-    Navigator.of(context).pop();
-    SuccessModal.show(
-      context,
-      title: 'Malipo Yamefanikiwa!',
-      message: 'Karibu $name! Kifurushi cha ${selectedPkg.name} (TSh ${selectedPkg.price}) kimewezeshwa.',
-    );
+
+    final state = context.read<AppState>();
+    try {
+      final init = await state.initiateSonicPayment(pkg: selectedPkg, name: name, phone: phone);
+      if (!mounted) return;
+
+      if (init.completed) {
+        Navigator.of(context).pop();
+        SuccessModal.show(
+          context,
+          title: 'Malipo Yamefanikiwa!',
+          message: 'Karibu $name! Kifurushi cha ${selectedPkg.name} kimewezeshwa.',
+        );
+        return;
+      }
+
+      setState(() => _error = init.message);
+
+      const maxAttempts = 90;
+      for (var i = 0; i < maxAttempts; i++) {
+        final delay = i < 20 ? const Duration(seconds: 1) : const Duration(seconds: 2);
+        await Future.delayed(delay);
+        if (!mounted) return;
+
+        try {
+          final status = await state.pollSonicPayment(
+            orderId: init.orderId,
+            userName: name,
+            phone: phone,
+          );
+          if (status.completed) {
+            if (!mounted) return;
+            Navigator.of(context).pop();
+            SuccessModal.show(
+              context,
+              title: 'Malipo Yamefanikiwa!',
+              message: 'Karibu $name! Kifurushi cha ${selectedPkg.name} (TSh ${selectedPkg.price}) kimewezeshwa.',
+            );
+            return;
+          }
+          if (status.failed) {
+            if (!mounted) return;
+            setState(() {
+              _paying = false;
+              _error = status.message ?? 'Malipo hayajakamilika. Jaribu tena.';
+            });
+            return;
+          }
+        } on SonicpesaPaymentException {
+          // Soft: keep polling through transient issues.
+        }
+        if (!mounted) return;
+        setState(() {
+          _error = i < 8
+              ? PaymentConfig.paymentPromptFor(phone)
+              : 'Bado tunasubiri uthibitisho wa ${PaymentConfig.networkLabel(PaymentConfig.detectNetwork(phone))}…';
+        });
+      }
+      if (!mounted) return;
+      setState(() {
+        _paying = false;
+        _error = 'Muda wa kusubiri malipo umeisha. Hakikisha umethibitisha PIN kwenye simu, kisha jaribu tena.';
+      });
+    } on SonicpesaPaymentException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _paying = false;
+        _error = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _paying = false;
+        _error = 'Hitilafu ya mtandao. Jaribu tena.';
+      });
+    }
   }
 
   Widget _field({
@@ -319,7 +407,9 @@ class _PaymentSheetState extends State<PaymentSheet> {
             }),
             const SizedBox(height: 8),
             PrimaryButton(
-              label: 'Lipa & Wezesha — TSh ${selectedPkg.price}',
+              label: _paying
+                  ? 'Inasubiri malipo…'
+                  : 'Lipa & Wezesha — TSh ${selectedPkg.price}',
               onTap: () => _submit(selectedPkg),
             ),
             const SizedBox(height: 12),

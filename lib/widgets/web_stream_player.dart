@@ -166,7 +166,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
-    video{width:100%;height:100%;object-fit:contain;background:#000}
+    video{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;background:#000}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.16.12/dist/shaka-player.compiled.js"></script>
 </head>

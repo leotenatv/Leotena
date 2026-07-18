@@ -58,6 +58,22 @@ router.put(
   })
 );
 
+// Public: called after the app obtains/refreshes its FCM registration token.
+router.put(
+  '/devices/:deviceId/fcm-token',
+  asyncRoute(async (req, res) => {
+    const { fcmToken } = req.body || {};
+    if (!fcmToken || !fcmToken.trim()) {
+      return res.status(400).json({ error: 'fcmToken is required' });
+    }
+    const row = await prisma.device.update({
+      where: { deviceId: req.params.deviceId },
+      data: { fcmToken: fcmToken.trim() },
+    });
+    res.json(serializeDevice(row));
+  })
+);
+
 // Admin: manage devices/users.
 router.get(
   '/admin/devices',

@@ -8,6 +8,8 @@ import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
 import '../utils/payment_voices.dart';
+import '../data/payment_config.dart';
+import '../data/sonicpesa_payment_service.dart';
 import 'common.dart';
 
 /// Premium unlock as a centered card carousel (side cards peek in).
@@ -55,8 +57,10 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
   int _page = 0;
   bool _speaking = false;
   bool _paymentSuccess = false;
+  bool _paymentBusy = false;
   String? _formError;
   String _selectedPkgId = 'mwezi';
+  String _waitingHint = 'Tafadhali subiri kidogo…';
 
   void _ensureAnims() {
     _pulse ??= AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
@@ -118,28 +122,132 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
   void _schedulePaymentSuccess() {
     _confirmTimer?.cancel();
     _paymentSuccess = false;
+    _paymentBusy = true;
     _successPop?.reset();
     _waitSpin
       ?..reset()
       ..repeat();
-    _confirmTimer = Timer(const Duration(milliseconds: 3200), () async {
+    unawaited(_runSonicPaymentFlow());
+  }
+
+  Future<void> _runSonicPaymentFlow() async {
+    final state = context.read<AppState>();
+    final pkgs = state.packages;
+    if (pkgs.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _paymentBusy = false;
+        _waitingHint = 'Hakuna kifurushi kinachopatikana. Jaribu tena baadaye.';
+      });
+      return;
+    }
+    final pkg = pkgs.firstWhere((p) => p.id == _selectedPkgId, orElse: () => pkgs.first);
+    final name = _nameCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+
+    try {
+      final init = await state.initiateSonicPayment(pkg: pkg, name: name, phone: phone);
       if (!mounted || _page != 3) return;
-      context.read<AppState>().confirmPayment();
-      _waitSpin?.stop();
-      setState(() => _paymentSuccess = true);
-      await _successPop?.forward(from: 0);
-      if (mounted) {
-        await PaymentVoices.playAsset(
-          PaymentVoices.successAsset,
-          onStart: () {
-            if (mounted) setState(() => _speaking = true);
-          },
-          onDone: () {
-            if (mounted) setState(() => _speaking = false);
-          },
-        );
+
+      if (init.completed) {
+        await _markPaymentSuccess();
+        return;
       }
+
+      setState(() {
+        _waitingHint = init.message.isNotEmpty ? init.message : PaymentConfig.paymentPromptFor(phone);
+      });
+
+      const maxAttempts = 90;
+      for (var i = 0; i < maxAttempts; i++) {
+        final delay = i < 20 ? const Duration(seconds: 1) : const Duration(seconds: 2);
+        await Future.delayed(delay);
+        if (!mounted || _page != 3 || _paymentSuccess) return;
+
+        try {
+          final status = await state.pollSonicPayment(
+            orderId: init.orderId,
+            userName: name,
+            phone: phone,
+          );
+          if (status.completed) {
+            await _markPaymentSuccess();
+            return;
+          }
+          if (status.failed) {
+            if (!mounted) return;
+            setState(() {
+              _paymentBusy = false;
+              _waitingHint = status.message?.isNotEmpty == true
+                  ? status.message!
+                  : 'Malipo hayajakamilika. Jaribu tena.';
+            });
+            return;
+          }
+        } on SonicpesaPaymentException catch (e) {
+          final code = e.statusCode;
+          if (code == 502 || code == 503 || code == 504) {
+            if (mounted) {
+              setState(() => _waitingHint = 'Seva inaendelea kuchakata malipo…');
+            }
+            continue;
+          }
+          // Soft: keep waiting instead of hard-failing transient issues.
+          if (mounted) {
+            setState(() => _waitingHint = PaymentConfig.paymentPromptFor(phone));
+          }
+          continue;
+        }
+
+        if (!mounted) return;
+        setState(() {
+          _waitingHint = i < 8
+              ? PaymentConfig.paymentPromptFor(phone)
+              : 'Bado tunasubiri uthibitisho wa ${PaymentConfig.networkLabel(PaymentConfig.detectNetwork(phone))}…';
+        });
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _paymentBusy = false;
+        _waitingHint =
+            'Muda wa kusubiri malipo umeisha. Hakikisha umethibitisha PIN kwenye simu, kisha jaribu tena.';
+      });
+    } on SonicpesaPaymentException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _paymentBusy = false;
+        _waitingHint = e.message;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _paymentBusy = false;
+        _waitingHint = 'Hitilafu ya mtandao. Jaribu tena.';
+      });
+    }
+  }
+
+  Future<void> _markPaymentSuccess() async {
+    if (!mounted || _page != 3) return;
+    _waitSpin?.stop();
+    setState(() {
+      _paymentSuccess = true;
+      _paymentBusy = false;
+      _waitingHint = 'Chaneli zote zimefunguliwa. Karibu ufurahie Premium.';
     });
+    await _successPop?.forward(from: 0);
+    if (mounted) {
+      await PaymentVoices.playAsset(
+        PaymentVoices.successAsset,
+        onStart: () {
+          if (mounted) setState(() => _speaking = true);
+        },
+        onDone: () {
+          if (mounted) setState(() => _speaking = false);
+        },
+      );
+    }
   }
 
   /// Button-only navigation — no swipe / PageView.
@@ -182,11 +290,16 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
       setState(() => _formError = 'Tafadhali jaza jina na nambari ya simu');
       return false;
     }
-    if (phone.replaceAll(RegExp(r'\D'), '').length < 9) {
-      setState(() => _formError = 'Nambari ya simu si sahihi');
+    if (!PaymentConfig.isValidFullName(name)) {
+      setState(() => _formError = 'Tafadhali jaza jina kamili (angalau majina mawili)');
       return false;
     }
-    context.read<AppState>().setProfile(name: name, phone: phone);
+    if (!PaymentConfig.isValidTzLocalPhone(phone)) {
+      setState(() => _formError = 'Namba ya simu si sahihi. Tumia 07…, 06… au 255…');
+      return false;
+    }
+    final local = PaymentConfig.normalizeTzLocalPhone(phone)!;
+    context.read<AppState>().setProfile(name: name, phone: local);
     FocusManager.instance.primaryFocus?.unfocus();
     return true;
   }
@@ -563,9 +676,13 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
             label: 'Lipia sasa',
             icon: Icons.payments_rounded,
             onTap: () async {
+              if (_paymentBusy) return;
               final pkgs = context.read<AppState>().packages;
               final pkg = pkgs.firstWhere((p) => p.id == _selectedPkgId, orElse: () => pkgs.first);
               context.read<AppState>().submitPaymentPending(pkg);
+              setState(() {
+                _waitingHint = PaymentConfig.paymentPromptFor(_phoneCtrl.text);
+              });
               await _goTo(3);
             },
           ),
@@ -611,7 +728,7 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(color: AppColors.section, borderRadius: BorderRadius.circular(14)),
                       child: Text(
-                        'Tafadhali subiri kidogo…',
+                        _waitingHint,
                         textAlign: TextAlign.center,
                         style: AppTheme.body(12, color: AppColors.textSecondary),
                       ),

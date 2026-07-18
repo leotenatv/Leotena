@@ -1,0 +1,67 @@
+{
+  "project_info": {
+    "project_number": "904780930630",
+    "project_id": "supasoka-18128",
+    "storage_bucket": "supasoka-18128.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:904780930630:android:c8974c48e50ab9be3bf447",
+        "android_client_info": {
+          "package_name": "com.eamax"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJmMsez-AInf54lyXpVHkbvF9iKX2B-vg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:904780930630:android:87a9d49fca0a12c63bf447",
+        "android_client_info": {
+          "package_name": "com.ghettodevelopers.leotena"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJmMsez-AInf54lyXpVHkbvF9iKX2B-vg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:904780930630:android:c142c7f96f18ddaa3bf447",
+        "android_client_info": {
+          "package_name": "com.supasoka"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJmMsez-AInf54lyXpVHkbvF9iKX2B-vg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

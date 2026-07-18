@@ -89,4 +89,8 @@ class ContentRepository {
     });
     return res as Map<String, dynamic>;
   }
+
+  Future<void> updateFcmToken(String deviceId, String fcmToken) async {
+    await client.put('/devices/$deviceId/fcm-token', body: {'fcmToken': fcmToken});
+  }
 }

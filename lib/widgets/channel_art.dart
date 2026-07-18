@@ -127,7 +127,7 @@ class MovieArt extends StatelessWidget {
       height: height,
       borderRadius: borderRadius,
       fit: fit,
-      fallbackChild: Icon(Icons.movie_rounded, color: Colors.white.withOpacity(0.7), size: 36),
+      fallbackChild: Icon(Icons.movie_rounded, color: Colors.white.withValues(alpha: 0.7), size: 36),
     );
   }
 }
@@ -177,8 +177,8 @@ class MediaBackdrop extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withOpacity(0.12),
-                Colors.black.withOpacity(0.42),
+                Colors.black.withValues(alpha: 0.12),
+                Colors.black.withValues(alpha: 0.42),
               ],
             ),
           ),

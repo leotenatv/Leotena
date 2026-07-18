@@ -17,6 +17,14 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+
+    // flutter_inappwebview uses Android compatibility APIs internally. Keep its
+    // upstream javac notices from obscuring warnings produced by this app.
+    if (name == "flutter_inappwebview_android") {
+        tasks.withType<JavaCompile>().configureEach {
+            options.compilerArgs.add("-XDsuppressNotes")
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

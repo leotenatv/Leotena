@@ -21,6 +21,8 @@ app.use(require('./routes/carousel.routes'));
 app.use(require('./routes/pricing.routes'));
 app.use(require('./routes/devices.routes'));
 app.use(require('./routes/subscriptions.routes'));
+app.use(require('./routes/notifications.routes'));
+app.use(require('./routes/payments.routes'));
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });

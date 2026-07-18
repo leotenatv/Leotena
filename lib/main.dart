@@ -1,3 +1,5 @@
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -5,16 +7,29 @@ import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
 import 'theme/responsive.dart';
 import 'state/app_state.dart';
+import 'data/push_notifications.dart';
 import 'screens/splash_screen.dart';
 import 'app_route_observer.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.white,
     statusBarIconBrightness: Brightness.dark,
     statusBarBrightness: Brightness.light,
   ));
+
+  try {
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    await setupLocalNotifications();
+    FirebaseMessaging.onMessage.listen(showForegroundNotification);
+  } catch (_) {
+    // No google-services config for this build target, no Play services on
+    // the device, etc. — push notifications just won't work; nothing else
+    // in the app depends on Firebase being present.
+  }
+
   runApp(const LeotenaApp());
 }
 

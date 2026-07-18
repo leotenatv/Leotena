@@ -187,4 +187,17 @@ class AdminApiRepository {
   }
 
   Future<void> deleteSubscription(String id) => client.delete('/admin/subscriptions/$id');
+
+  // ── Notifications (Arifa) ────────────────────────────────
+  Future<List<NotificationLog>> getNotifications() async {
+    final res = await client.get('/admin/notifications') as List<dynamic>;
+    return res.map((e) => NotificationLog.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<NotificationLog> sendNotification(String title, String body) async {
+    final res = await client.post('/admin/notifications/send', body: {'title': title, 'body': body});
+    return NotificationLog.fromJson(res as Map<String, dynamic>);
+  }
+
+  Future<void> deleteNotification(String id) => client.delete('/admin/notifications/$id');
 }

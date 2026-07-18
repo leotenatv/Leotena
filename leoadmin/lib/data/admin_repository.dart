@@ -11,6 +11,7 @@ class AdminRepository {
     AdminNavItem('ratiba', 'Ratiba', Icons.schedule_rounded),
     AdminNavItem('pricing', 'Bei', Icons.sell_rounded),
     AdminNavItem('subscriptions', 'Malipo', Icons.payments_rounded),
+    AdminNavItem('notifications', 'Arifa', Icons.notifications_rounded),
     AdminNavItem('analytics', 'Takwimu', Icons.bar_chart_rounded),
     AdminNavItem('settings', 'Mipangilio', Icons.settings_rounded),
   ];

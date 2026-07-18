@@ -116,6 +116,9 @@ model Device {
   plan         DevicePlan @default(FREE)
   active       Boolean    @default(true)
   premiumUntil DateTime?
+  /// Firebase Cloud Messaging registration token for this install. Null
+  /// until the app has requested notification permission and registered one.
+  fcmToken     String?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -130,5 +133,38 @@ model SubscriptionRecord {
   packageName    String
   amount         String
   success        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+}
+
+/// SonicPesa mobile-money payment session (pending → completed / failed).
+model PaymentTransaction {
+  id        String   @id @default(cuid())
+  /// SonicPesa order_id — unique provider reference for idempotent grants.
+  orderId   String   @unique
+  /// Client install id (Device.deviceId), not the DB cuid.
+  deviceId  String
+  userName  String   @default("")
+  phone     String   @default("")
+  planId    String
+  planName  String   @default("")
+  amount    Int
+  method    String   @default("Mobile Money")
+  /// pending | completed | failed
+  status    String   @default("pending")
+  metadata  Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deviceId])
+  @@index([status])
+}
+
+/// Audit trail of admin-sent broadcast push notifications.
+model NotificationLog {
+  id             String   @id @default(cuid())
+  title          String
+  body           String
+  successCount   Int      @default(0)
+  failureCount   Int      @default(0)
   createdAt      DateTime @default(now())
 }

@@ -516,6 +516,34 @@ class SubscriptionRecord {
       );
 }
 
+/// A broadcast push notification the admin sent, with delivery counts.
+class NotificationLog {
+  final String id;
+  final String title;
+  final String body;
+  final int successCount;
+  final int failureCount;
+  final DateTime createdAt;
+
+  const NotificationLog({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.successCount,
+    required this.failureCount,
+    required this.createdAt,
+  });
+
+  factory NotificationLog.fromJson(Map<String, dynamic> json) => NotificationLog(
+        id: json['id'] as String,
+        title: json['title'] as String? ?? '',
+        body: json['body'] as String? ?? '',
+        successCount: json['successCount'] as int? ?? 0,
+        failureCount: json['failureCount'] as int? ?? 0,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+      );
+}
+
 class ActivityItem {
   final String title;
   final String subtitle;

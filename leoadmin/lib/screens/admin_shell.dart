@@ -9,6 +9,7 @@ import 'analytics_screen.dart';
 import 'channels_screen.dart';
 import 'carousel_screen.dart';
 import 'dashboard_screen.dart';
+import 'notifications_screen.dart';
 import 'ratiba_screen.dart';
 import 'settings_screen.dart';
 import 'subscriptions_screen.dart';
@@ -32,6 +33,8 @@ class AdminShell extends StatelessWidget {
         return const PricingScreen();
       case 'subscriptions':
         return const SubscriptionsScreen();
+      case 'notifications':
+        return const NotificationsScreen();
       case 'analytics':
         return const AnalyticsScreen();
       case 'settings':
