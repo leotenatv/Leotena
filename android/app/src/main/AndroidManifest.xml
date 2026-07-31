@@ -2,6 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Android 13+ requires this to show any notification, including FCM pushes. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
     <application
         android:label="Leotena"
         android:name="${applicationName}"
@@ -34,6 +35,10 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@mipmap/ic_launcher" />
+        <!-- Route FCM tray notifications to the audible high-priority channel. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="leotena_alerts" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

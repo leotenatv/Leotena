@@ -87,7 +87,7 @@ class NotificationsScreen extends StatelessWidget {
             adminTextField(controller: body, hint: 'Angalia mechi ya leo moja kwa moja…', maxLines: 3),
             const SizedBox(height: 8),
             Text(
-              'Itatumwa kwa vifaa vyote vilivyosajiliwa kupokea arifa.',
+              'Itatumwa kwa sauti kwa vifaa vyote hai vilivyosajiliwa kupokea arifa.',
               style: AdminTheme.body(11, color: AdminColors.textHint),
             ),
             const SizedBox(height: 14),

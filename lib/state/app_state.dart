@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../data/api_client.dart';
 import '../data/content_repository.dart';
 import '../data/payment_config.dart';
+import '../data/push_notifications.dart';
 import '../data/sonicpesa_payment_service.dart';
 import '../models/models.dart';
 
@@ -194,13 +195,12 @@ class AppState extends ChangeNotifier {
     unawaited(_registerForPush(id));
   }
 
-  /// Requests notification permission and registers this device's FCM token
-  /// with the backend so admin broadcasts (see leoadmin's "Arifa") reach it.
+  /// Requests notification permission (with sound) and registers this device's
+  /// FCM token with the backend so admin broadcasts reach it.
   /// Best-effort: permission denial or a token fetch failure is non-fatal.
   Future<void> _registerForPush(String id) async {
     try {
-      await FirebaseMessaging.instance.requestPermission();
-      final token = await FirebaseMessaging.instance.getToken();
+      final token = await requestPushPermissionAndToken();
       if (token != null) await _repo.updateFcmToken(id, token);
       FirebaseMessaging.instance.onTokenRefresh.listen((t) {
         _repo.updateFcmToken(id, t).catchError((_) {});
