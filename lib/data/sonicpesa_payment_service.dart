@@ -148,6 +148,11 @@ class SonicpesaPaymentService {
         lower.contains('timed out')) {
       return 'Seva ya malipo haipatikani kwa sasa. Jaribu tena baada ya dakika moja.';
     }
+    if (lower.contains('9003') || lower.contains('wrong credential') || lower.contains('halopesa') || lower.contains('halotel')) {
+      return raw.contains('SonicPesa') || raw.contains('HaloPesa') || raw.contains('Halotel')
+          ? raw
+          : 'Malipo ya Halotel (HaloPesa) hayajasanidi kwenye akaunti ya SonicPesa. Tumia M-Pesa / Mixx / Airtel au wasiliana na SonicPesa.';
+    }
     if (lower.contains('order') || lower.contains('sonicpesa')) {
       return 'Imeshindikana kuanzisha malipo. Hakikisha namba ya simu ni sahihi na jaribu tena.';
     }

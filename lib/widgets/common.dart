@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
 
@@ -72,15 +74,57 @@ class GreenBadge extends StatelessWidget {
   final String text;
   final Color color;
   final Color textColor;
-  const GreenBadge(this.text, {super.key, this.color = AppColors.green, this.textColor = Colors.white});
+  final IconData? icon;
+  const GreenBadge(
+    this.text, {
+    super.key,
+    this.color = AppColors.green,
+    this.textColor = Colors.white,
+    this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
-      child: Text(text, style: AppTheme.body(9.5, color: textColor, weight: FontWeight.w800)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 11, color: textColor),
+            const SizedBox(width: 3),
+          ],
+          Text(text, style: AppTheme.body(9.5, color: textColor, weight: FontWeight.w800)),
+        ],
+      ),
     );
+  }
+}
+
+/// Premium channel badge: MALIPO until paid, then Imelipiwa with verified tick.
+class PremiumChannelBadge extends StatelessWidget {
+  const PremiumChannelBadge({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final paid = context.watch<AppState>().subscribed;
+    if (paid) {
+      return const GreenBadge('Imelipiwa', icon: Icons.verified_rounded);
+    }
+    return const GreenBadge('MALIPO');
+  }
+}
+
+/// Channel access badge: BURE for free, MALIPO / Imelipiwa for premium.
+class ChannelAccessBadge extends StatelessWidget {
+  final bool premium;
+  const ChannelAccessBadge({super.key, required this.premium});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!premium) return const GreenBadge('BURE');
+    return const PremiumChannelBadge();
   }
 }
 

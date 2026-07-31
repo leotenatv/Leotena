@@ -194,7 +194,7 @@ class ChannelWideCard extends StatelessWidget {
               Positioned(
                 top: 12,
                 left: 12,
-                child: GreenBadge(channel.premium ? 'MALIPO' : 'BURE'),
+                child: ChannelAccessBadge(premium: channel.premium),
               ),
               Positioned(
                 top: 12,
@@ -281,7 +281,7 @@ class ChannelPosterCard extends StatelessWidget {
                       ),
                     ),
                     if (channel.premium)
-                      const Positioned(top: 10, left: 10, child: GreenBadge('MALIPO')),
+                      const Positioned(top: 10, left: 10, child: PremiumChannelBadge()),
                   ],
                 ),
               ),
@@ -350,7 +350,7 @@ class ChannelMiniCard extends StatelessWidget {
               Positioned(
                 top: 12,
                 right: 12,
-                child: GreenBadge(channel.premium ? 'MALIPO' : 'BURE'),
+                child: ChannelAccessBadge(premium: channel.premium),
               ),
               Positioned(
                 left: 14,

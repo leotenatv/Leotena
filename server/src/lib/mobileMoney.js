@@ -1,4 +1,6 @@
-/** Tanzania mobile-money network from national `0XXXXXXXXX` phone. */
+/** Tanzania mobile-money network from national `0XXXXXXXXX` phone.
+ * Prefixes follow TCRA numbering (portability possible; used for UX prompts).
+ */
 
 function detectTzMobileNetwork(localPhone) {
   const digits = String(localPhone || '').replace(/\D/g, '');
@@ -11,10 +13,15 @@ function detectTzMobileNetwork(localPhone) {
   if (!/^0[67]\d{8}$/.test(local)) return 'unknown';
 
   const prefix = local.slice(0, 3);
+  // Halotel (Viettel) — HaloPesa
   if (['061', '062', '063'].includes(prefix)) return 'halotel';
-  if (['065', '067', '071', '073'].includes(prefix)) return 'tigo';
-  if (['068', '069'].includes(prefix)) return 'airtel';
-  if (['074', '075', '076', '077', '078'].includes(prefix)) return 'mpesa';
+  // Yas (formerly Tigo) — Mixx
+  if (['065', '067', '071', '077'].includes(prefix)) return 'tigo';
+  // Airtel Money
+  if (['068', '069', '078'].includes(prefix)) return 'airtel';
+  // Vodacom — M-Pesa
+  if (['074', '075', '076', '079'].includes(prefix)) return 'mpesa';
+  // TTCL / Smile / other 06–07 → generic fallbacks
   if (local.startsWith('06')) return 'halotel';
   if (local.startsWith('07')) return 'mpesa';
   return 'unknown';
@@ -29,7 +36,7 @@ function mobileMoneyMethodLabel(network) {
     case 'tigo':
       return 'Mixx by Yas';
     case 'halotel':
-      return 'Halotel';
+      return 'HaloPesa';
     default:
       return 'Mobile Money';
   }
@@ -45,14 +52,32 @@ function paymentPromptForPhone(localPhone) {
     case 'tigo':
       return 'Angalia simu yako — thibitisha PIN ya Mixx by Yas.';
     case 'halotel':
-      return 'Angalia simu yako — thibitisha PIN ya Halotel.';
+      return 'Angalia simu yako — thibitisha PIN ya HaloPesa.';
     default:
-      return 'Angalia simu yako — thibitisha PIN (M-Pesa, Mixx, Airtel Money, Halotel).';
+      return 'Angalia simu yako — thibitisha PIN (M-Pesa, Mixx, Airtel Money, HaloPesa).';
   }
+}
+
+/** Map SonicPesa initiate failures to clear Swahili (esp. HaloPesa credential gaps). */
+function mapSonicInitiateError(rawError, localPhone) {
+  const msg = String(rawError || '').toLowerCase();
+  const network = detectTzMobileNetwork(localPhone);
+
+  if (msg.includes('9003') || msg.includes('wrong credential')) {
+    if (network === 'halotel') {
+      return 'Malipo ya Halotel (HaloPesa) hayajasanidi kwenye akaunti ya SonicPesa. Wasiliana na SonicPesa kuwezesha HaloPesa, au tumia M-Pesa / Mixx / Airtel.';
+    }
+    return 'Huduma ya malipo ya mtandao huu haijasanidi kikamilifu kwenye SonicPesa. Jaribu namba ya mtandao mwingine au wasiliana na msaada.';
+  }
+  if (msg.includes('unreachable') || msg.includes('timed out')) {
+    return 'Seva ya malipo haipatikani kwa sasa. Jaribu tena baada ya dakika moja.';
+  }
+  return 'Imeshindikana kuanzisha malipo. Hakikisha namba ya simu ni sahihi na jaribu tena.';
 }
 
 module.exports = {
   detectTzMobileNetwork,
   mobileMoneyMethodLabel,
   paymentPromptForPhone,
+  mapSonicInitiateError,
 };

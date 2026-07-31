@@ -2,11 +2,11 @@
 class PaymentConfig {
   PaymentConfig._();
 
-  /// Local `0XXXXXXXXX` after [normalizeTzLocalPhone] (M-Pesa, Mixx, Airtel, Halotel).
+  /// Local `0XXXXXXXXX` after [normalizeTzLocalPhone] (M-Pesa, Mixx, Airtel, HaloPesa).
   static final RegExp tzLocalPhone = RegExp(r'^0[67]\d{8}$');
 
-  /// Halotel + other TZ mobile prefixes (national format, with leading 0).
-  static const halotelPrefixes = <String>['061', '062', '063', '069'];
+  /// Halotel / HaloPesa national prefixes.
+  static const halotelPrefixes = <String>['061', '062', '063'];
 
   /// `07…` / `06…` (10 digits), or `7…` / `6…` (9 digits), or `255…` / `+255…`.
   static String? normalizeTzLocalPhone(String raw) {
@@ -37,23 +37,24 @@ class PaymentConfig {
   }
 
   static const paymentPromptSw =
-      'Angalia simu yako — thibitisha PIN (M-Pesa, Mixx by Yas, Airtel Money, Halotel).';
+      'Angalia simu yako — thibitisha PIN (M-Pesa, Mixx by Yas, Airtel Money, HaloPesa).';
 
   /// Detect mobile-money operator from normalized `0XXXXXXXXX` number.
+  /// Prefixes follow TCRA (number portability may differ).
   static TzMobileNetwork detectNetwork(String raw) {
     final phone = normalizeTzLocalPhone(raw);
     if (phone == null || phone.length < 3) return TzMobileNetwork.unknown;
     final prefix = phone.substring(0, 3);
-    if (halotelPrefixes.contains(prefix) && prefix != '069') {
+    if (halotelPrefixes.contains(prefix)) {
       return TzMobileNetwork.halotel;
     }
-    if (const {'065', '067', '071', '073'}.contains(prefix)) {
+    if (const {'065', '067', '071', '077'}.contains(prefix)) {
       return TzMobileNetwork.tigo;
     }
-    if (const {'068', '069'}.contains(prefix)) {
+    if (const {'068', '069', '078'}.contains(prefix)) {
       return TzMobileNetwork.airtel;
     }
-    if (const {'074', '075', '076', '077', '078'}.contains(prefix)) {
+    if (const {'074', '075', '076', '079'}.contains(prefix)) {
       return TzMobileNetwork.mpesa;
     }
     if (phone.startsWith('06')) return TzMobileNetwork.halotel;
@@ -70,7 +71,7 @@ class PaymentConfig {
       case TzMobileNetwork.tigo:
         return 'Mixx by Yas';
       case TzMobileNetwork.halotel:
-        return 'Halotel';
+        return 'HaloPesa';
       case TzMobileNetwork.unknown:
         return 'Mobile Money';
     }
@@ -86,7 +87,7 @@ class PaymentConfig {
       case TzMobileNetwork.tigo:
         return 'Angalia simu yako — thibitisha PIN ya Mixx by Yas.';
       case TzMobileNetwork.halotel:
-        return 'Angalia simu yako — thibitisha PIN ya Halotel.';
+        return 'Angalia simu yako — thibitisha PIN ya HaloPesa.';
       case TzMobileNetwork.unknown:
         return paymentPromptSw;
     }

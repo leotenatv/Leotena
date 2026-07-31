@@ -735,7 +735,7 @@ class _ChannelSwitcherSheetState extends State<ChannelSwitcherSheet> {
                       maxLines: 1, overflow: TextOverflow.ellipsis,
                       style: AppTheme.body(14.5, color: AppColors.textPrimary, weight: FontWeight.w700)),
                 ),
-                if (c.premium) ...[const SizedBox(width: 7), const GreenBadge('MALIPO')],
+                if (c.premium) ...[const SizedBox(width: 7), const PremiumChannelBadge()],
               ]),
               const SizedBox(height: 2),
               Text(c.program, maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTheme.body(11.5, color: AppColors.textHint)),

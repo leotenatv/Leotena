@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
 import '../widgets/channel_art.dart';
+import '../widgets/common.dart';
 import '../widgets/premium_lock_modal.dart';
 import 'player_screen.dart';
 
@@ -349,7 +350,9 @@ class _HitTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (hit.premium)
+              if (hit.premium && hit.kind == _HitKind.channel)
+                const PremiumChannelBadge()
+              else if (hit.premium)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(

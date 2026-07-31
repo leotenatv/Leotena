@@ -179,6 +179,7 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
           }
           if (status.failed) {
             if (!mounted) return;
+            _waitSpin?.stop();
             setState(() {
               _paymentBusy = false;
               _waitingHint = status.message?.isNotEmpty == true
@@ -211,6 +212,7 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
       }
 
       if (!mounted) return;
+      _waitSpin?.stop();
       setState(() {
         _paymentBusy = false;
         _waitingHint =
@@ -218,12 +220,14 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
       });
     } on SonicpesaPaymentException catch (e) {
       if (!mounted) return;
+      _waitSpin?.stop();
       setState(() {
         _paymentBusy = false;
         _waitingHint = e.message;
       });
     } catch (_) {
       if (!mounted) return;
+      _waitSpin?.stop();
       setState(() {
         _paymentBusy = false;
         _waitingHint = 'Hitilafu ya mtandao. Jaribu tena.';

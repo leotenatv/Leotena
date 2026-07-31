@@ -15,6 +15,7 @@ const {
   detectTzMobileNetwork,
   mobileMoneyMethodLabel,
   paymentPromptForPhone,
+  mapSonicInitiateError,
 } = require('../lib/mobileMoney');
 const {
   withDbRetry,
@@ -120,11 +121,12 @@ router.post(
     }
 
     if (!order.ok || !order.order_id) {
+      const errText = String(order.error || '');
       const unreachable =
-        order.error?.toLowerCase().includes('unreachable') ||
-        order.error?.toLowerCase().includes('timed out');
+        errText.toLowerCase().includes('unreachable') ||
+        errText.toLowerCase().includes('timed out');
       return res.status(unreachable ? 503 : 502).json({
-        error: 'Imeshindikana kuanzisha malipo. Hakikisha namba ya simu ni sahihi na jaribu tena.',
+        error: mapSonicInitiateError(errText, localPhone),
       });
     }
 
