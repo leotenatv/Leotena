@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -37,22 +38,24 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   double _position = 0;
   double _duration = 0;
   String _lang = 'sw';
-  String _quality = 'Auto';
-  List<String> _languages = const [];
-  List<String> _qualities = const ['Auto'];
+  String _quality = '360p';
+  List<String> _languages = const ['sw', 'en'];
+  List<String> _qualities = const ['360p', '480p', '720p', '1080p', 'Auto'];
   String? _playerError;
   int _reloadToken = 0;
+  bool _humanCheck = false;
+  bool _defaultsApplied = false;
+  DateTime _lastPosUi = DateTime.fromMillisecondsSinceEpoch(0);
   final _streamController = WebStreamController();
   Timer? _hideTimer;
 
   static const _langLabels = <String, String>{
     'sw': 'Kiswahili',
     'en': 'English',
-    'fr': 'Français',
-    'ar': 'العربية',
-    'pt': 'Português',
-    'es': 'Español',
   };
+
+  static const _defaultLanguages = <String>['sw', 'en'];
+  static const _defaultQualities = <String>['360p', '480p', '720p', '1080p', 'Auto'];
 
   void _enterLandscapeMode() {
     SystemChrome.setPreferredOrientations([
@@ -95,14 +98,35 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     setState(() {
       _buffering = true;
       _playing = false;
+      _humanCheck = false;
+      _defaultsApplied = false;
       _position = 0;
       _duration = 0;
-      _quality = 'Auto';
-      _qualities = const ['Auto'];
-      _languages = const [];
+      _lang = 'sw';
+      _quality = '360p';
+      _qualities = _defaultQualities;
+      _languages = _defaultLanguages;
       _playerError = null;
       _reloadToken++;
     });
+  }
+
+  List<String> _mergeQualities(List<String> fromStream) {
+    final heights = <int>{};
+    for (final q in [..._defaultQualities, ...fromStream]) {
+      if (q == 'Auto') continue;
+      final n = int.tryParse(q.replaceAll(RegExp(r'[^0-9]'), ''));
+      if (n != null && n > 0) heights.add(n);
+    }
+    final sorted = heights.toList()..sort();
+    return [...sorted.map((h) => '${h}p'), 'Auto'];
+  }
+
+  Future<void> _applySmartDefaults() async {
+    if (_defaultsApplied) return;
+    _defaultsApplied = true;
+    await _streamController.setLanguage('sw');
+    await _streamController.setQuality('360p');
   }
 
   void _scheduleHide() {
@@ -156,13 +180,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _hideTimer?.cancel();
     final picked = await LanguagePickerSheet.show(
       context,
-      languages: _languages,
+      languages: _languages.isEmpty ? _defaultLanguages : _languages,
       selected: _lang,
     );
     if (!mounted) return;
     if (picked != null && picked != _lang) {
-      setState(() => _buffering = true);
+      setState(() {
+        _lang = picked;
+        _buffering = true;
+      });
       await _streamController.setLanguage(picked);
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      if (mounted) await _streamController.setLanguage(picked);
+      if (mounted) setState(() => _buffering = false);
     }
     _enterLandscapeMode();
     _scheduleHide();
@@ -172,33 +202,33 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     _hideTimer?.cancel();
     final picked = await QualityPickerSheet.show(
       context,
-      qualities: _qualities,
+      qualities: _qualities.isEmpty ? _defaultQualities : _qualities,
       selected: _quality,
     );
     if (!mounted) return;
     if (picked != null && picked != _quality) {
-      setState(() => _buffering = true);
+      setState(() {
+        _quality = picked;
+        _buffering = true;
+      });
       await _streamController.setQuality(picked);
+      // Embed players sometimes need a second kick after Shaka attaches.
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      if (mounted) await _streamController.setQuality(picked);
+      if (mounted) {
+        setState(() => _buffering = false);
+        _scheduleHide();
+      }
     }
     _enterLandscapeMode();
     _scheduleHide();
   }
 
   Widget _wrapLandscape(Widget child) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final portrait = constraints.maxHeight > constraints.maxWidth;
-        if (!portrait) return child;
-        return RotatedBox(
-          quarterTurns: 1,
-          child: SizedBox(
-            width: constraints.maxHeight,
-            height: constraints.maxWidth,
-            child: child,
-          ),
-        );
-      },
-    );
+    // Do not use RotatedBox around the WebView — remounting/transforming a
+    // platform view causes blank video (audio-only) on Huawei. Landscape is
+    // already forced via SystemChrome.
+    return child;
   }
 
   @override
@@ -214,97 +244,156 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     return Scaffold(
       backgroundColor: AppColors.navyDeep,
       body: _wrapLandscape(
-        GestureDetector(
-          onTap: _toggleControls,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Real Shaka web-player surface using the clicked item's URL.
-              WebStreamPlayer(
-                key: ValueKey('${src.channelId ?? src.title}|${src.url}|$_reloadToken'),
-                source: src,
-                controller: _streamController,
-                onState: ({
-                  bool? playing,
-                  bool? buffering,
-                  double? position,
-                  double? duration,
-                }) {
-                  if (!mounted) return;
-                  setState(() {
-                    if (playing != null) _playing = playing;
-                    if (buffering != null) _buffering = buffering;
-                    if (position != null) _position = position;
-                    if (duration != null) _duration = duration;
-                  });
-                },
-                onQualities: (items) {
-                  if (!mounted) return;
-                  setState(() => _qualities = items.isEmpty ? const ['Auto'] : items);
-                },
-                onLanguages: (items) {
-                  if (!mounted) return;
-                  setState(() => _languages = items);
-                },
-                onQualityChanged: (value) {
-                  if (mounted) setState(() => _quality = value);
-                },
-                onLanguageChanged: (value) {
-                  if (mounted) setState(() => _lang = value);
-                },
-                onError: (message) {
-                  if (!mounted) return;
-                  setState(() {
+        Stack(
+          fit: StackFit.expand,
+          children: [
+            // Real Shaka web-player surface using the clicked item's URL.
+            WebStreamPlayer(
+              key: ValueKey('${src.channelId ?? src.title}|${src.url}|$_reloadToken'),
+              source: src,
+              controller: _streamController,
+              onState: ({
+                bool? playing,
+                bool? buffering,
+                double? position,
+                double? duration,
+              }) {
+                if (!mounted) return;
+                final playChanged = playing != null && playing != _playing;
+                final bufChanged = buffering != null && buffering != _buffering;
+                final durChanged = duration != null && duration != _duration;
+                // While chrome is hidden, ignore scrubber ticks — they only
+                // cause Huawei jank (removeInvalidNode) and GC pressure.
+                if (!_controls && !playChanged && !bufChanged) return;
+                final now = DateTime.now();
+                final posDue = now.difference(_lastPosUi).inMilliseconds >= 800;
+                final posChanged = position != null && posDue && (position - _position).abs() >= 0.5;
+                if (!playChanged && !bufChanged && !durChanged && !posChanged) return;
+                if (posChanged) _lastPosUi = now;
+                setState(() {
+                  if (playing != null) _playing = playing;
+                  if (buffering != null) _buffering = buffering;
+                  if (position != null && (posChanged || playChanged)) _position = position;
+                  if (duration != null) _duration = duration;
+                });
+              },
+              onQualities: (items) {
+                if (!mounted) return;
+                final merged = _mergeQualities(items);
+                if (listEquals(merged, _qualities)) {
+                  _applySmartDefaults();
+                  return;
+                }
+                setState(() => _qualities = merged);
+                _applySmartDefaults();
+              },
+              onLanguages: (items) {
+                if (!mounted) return;
+                if (!listEquals(_languages, _defaultLanguages)) {
+                  setState(() => _languages = _defaultLanguages);
+                }
+                _applySmartDefaults();
+              },
+              onQualityChanged: (value) {
+                if (!mounted || value.isEmpty) return;
+                if (!_defaultsApplied && value == 'Auto') return;
+                if (value == _quality) return;
+                setState(() => _quality = value);
+              },
+              onLanguageChanged: (value) {
+                if (!mounted) return;
+                final code = value.toLowerCase().split('-').first;
+                if ((code == 'sw' || code == 'en') && code != _lang) {
+                  setState(() => _lang = code);
+                }
+              },
+              onHumanCheck: (needed) {
+                if (!mounted) return;
+                setState(() {
+                  _humanCheck = needed;
+                  if (needed) {
+                    _controls = false;
                     _buffering = false;
-                    _playing = false;
-                    _playerError = message;
-                  });
-                },
+                    _playerError = null;
+                    _hideTimer?.cancel();
+                  }
+                });
+              },
+              onError: (message) {
+                if (!mounted) return;
+                setState(() {
+                  _humanCheck = false;
+                  _buffering = false;
+                  _playing = false;
+                  _playerError = message;
+                });
+              },
+            ),
+
+            // Hybrid WebViews eat Flutter parent GestureDetectors. When
+            // controls are hidden, this opaque layer catches taps so we can
+            // show the UI instead of pausing/playing the HTML video.
+            if (!_humanCheck && !_controls && _playerError == null)
+              Positioned.fill(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() => _controls = true);
+                    _scheduleHide();
+                  },
+                ),
               ),
 
-              if (_buffering && _playerError == null)
-                const Center(
+            if (_buffering && _playerError == null && !_humanCheck)
+              const IgnorePointer(
+                child: Center(
                   child: SizedBox(
                     width: 54,
                     height: 54,
                     child: CircularProgressIndicator(strokeWidth: 4, color: AppColors.green),
                   ),
                 ),
+              ),
 
-              if (_playerError != null) _errorOverlay(),
+            if (_playerError != null && !_humanCheck) _errorOverlay(),
 
-              // Controls overlay.
-              AnimatedOpacity(
-                opacity: _controls ? 1 : 0,
-                duration: const Duration(milliseconds: 250),
-                child: IgnorePointer(
-                  ignoring: !_controls,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          const Color(0xFF06122A).withValues(alpha: 0.6),
-                          Colors.transparent,
-                          Colors.transparent,
-                          const Color(0xFF06122A).withValues(alpha: 0.78),
-                        ],
-                        stops: const [0, 0.28, 0.62, 1],
-                      ),
-                    ),
-                    child: Stack(
-                      children: [
-                        _topBar(src),
-                        _centerTransport(),
-                        _bottomBar(src),
+            // Minimal exit only — leave the full WebView free for the checkbox.
+            if (_humanCheck)
+              Align(
+                alignment: Alignment.topLeft,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 8, 16, 0),
+                  child: _circleBtn(Icons.chevron_left_rounded, _exit),
+                ),
+              )
+            else if (_controls)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _toggleControls,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        const Color(0xFF06122A).withValues(alpha: 0.6),
+                        Colors.transparent,
+                        Colors.transparent,
+                        const Color(0xFF06122A).withValues(alpha: 0.78),
                       ],
+                      stops: const [0, 0.28, 0.62, 1],
                     ),
+                  ),
+                  child: Stack(
+                    children: [
+                      _topBar(src),
+                      _centerTransport(),
+                      _bottomBar(src),
+                    ],
                   ),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -423,15 +512,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(children: [
-                if (_languages.length > 1)
-                  _tool(
-                    Icons.translate_rounded,
-                    _langLabels[_lang] ?? 'Kiswahili',
-                    () => _openLanguagePicker(src),
-                  ),
-                if (_qualities.length > 1)
-                  _tool(Icons.high_quality_rounded, _quality, _openQualityPicker),
-                _tool(Icons.live_tv_rounded, src.isChannel ? 'Badili Kituo' : 'Vituo', _openSwitcher, accent: true),
+                _tool(
+                  Icons.translate_rounded,
+                  'Lugha · ${_langLabels[_lang] ?? 'Kiswahili'}',
+                  () => _openLanguagePicker(src),
+                ),
+                _tool(
+                  Icons.high_quality_rounded,
+                  'Ubora · $_quality',
+                  _openQualityPicker,
+                ),
+                _tool(
+                  Icons.live_tv_rounded,
+                  src.isChannel ? 'Badili Kituo' : 'Vituo',
+                  _openSwitcher,
+                  accent: true,
+                ),
               ]),
             ),
           ],
@@ -780,6 +876,7 @@ class LanguagePickerSheet extends StatelessWidget {
   }) {
     return showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0xFF06122A).withValues(alpha: 0.55),
       builder: (_) => LanguagePickerSheet(languages: languages, selected: selected),
@@ -788,75 +885,87 @@ class LanguagePickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, 10, 20, 16 + MediaQuery.of(context).padding.bottom),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 42,
-              height: 5,
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(color: const Color(0xFFD6E7F5), borderRadius: BorderRadius.circular(3)),
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(20, 10, 20, 16 + MediaQuery.paddingOf(context).bottom),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
-          ),
-          Text('Lugha', style: AppTheme.heading(19)),
-          const SizedBox(height: 4),
-          Text('Chagua lugha ya sauti', style: AppTheme.body(12, color: AppColors.textHint, weight: FontWeight.w600)),
-          const SizedBox(height: 16),
-          ...languages.map((code) {
-            final active = code == selected;
-            final label = _labels[code] ?? code.toUpperCase();
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => Navigator.of(context).pop(code),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: active ? AppColors.green.withValues(alpha: 0.10) : AppColors.section,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: active ? AppColors.green.withValues(alpha: 0.45) : Colors.transparent,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.translate_rounded,
-                          color: active ? AppColors.green : AppColors.navy,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            label,
-                            style: AppTheme.body(15, color: AppColors.textPrimary, weight: FontWeight.w700),
-                          ),
-                        ),
-                        if (active)
-                          const Icon(Icons.check_circle_rounded, color: AppColors.green, size: 22)
-                        else
-                          Icon(Icons.circle_outlined, color: AppColors.textHint.withValues(alpha: 0.5), size: 22),
-                      ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 14),
+                      decoration: BoxDecoration(color: const Color(0xFFD6E7F5), borderRadius: BorderRadius.circular(3)),
                     ),
                   ),
-                ),
+                  Text('Badili Lugha', style: AppTheme.heading(19)),
+                  const SizedBox(height: 4),
+                  Text('Kiswahili au English pekee', style: AppTheme.body(12, color: AppColors.textHint, weight: FontWeight.w600)),
+                  const SizedBox(height: 16),
+                  ...languages.map((code) {
+                    final active = code == selected;
+                    final label = _labels[code] ?? code.toUpperCase();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.of(context).pop(code),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: active ? AppColors.green.withValues(alpha: 0.10) : AppColors.section,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: active ? AppColors.green.withValues(alpha: 0.45) : Colors.transparent,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.translate_rounded,
+                                  color: active ? AppColors.green : AppColors.navy,
+                                  size: 22,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    label,
+                                    style: AppTheme.body(15, color: AppColors.textPrimary, weight: FontWeight.w700),
+                                  ),
+                                ),
+                                if (active)
+                                  const Icon(Icons.check_circle_rounded, color: AppColors.green, size: 22)
+                                else
+                                  Icon(Icons.circle_outlined, color: AppColors.textHint.withValues(alpha: 0.5), size: 22),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
               ),
-            );
-          }),
-        ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -875,6 +984,7 @@ class QualityPickerSheet extends StatelessWidget {
   }) {
     return showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       barrierColor: const Color(0xFF06122A).withValues(alpha: 0.55),
       builder: (_) => QualityPickerSheet(qualities: qualities, selected: selected),
@@ -883,86 +993,101 @@ class QualityPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, 10, 20, 16 + MediaQuery.of(context).padding.bottom),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 42,
-              height: 5,
-              margin: const EdgeInsets.only(bottom: 14),
-              decoration: BoxDecoration(color: const Color(0xFFD6E7F5), borderRadius: BorderRadius.circular(3)),
+    final maxHeight = MediaQuery.sizeOf(context).height * 0.72;
+    return SafeArea(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxHeight),
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(20, 10, 20, 16 + MediaQuery.paddingOf(context).bottom),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
-          ),
-          Text('Ubora', style: AppTheme.heading(19)),
-          const SizedBox(height: 4),
-          Text('Chagua ubora wa video', style: AppTheme.body(12, color: AppColors.textHint, weight: FontWeight.w600)),
-          const SizedBox(height: 16),
-          ...qualities.map((q) {
-            final active = q == selected;
-            final isDefault = q == 'Auto';
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: () => Navigator.of(context).pop(q),
-                  borderRadius: BorderRadius.circular(16),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    decoration: BoxDecoration(
-                      color: active ? AppColors.green.withValues(alpha: 0.10) : AppColors.section,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: active ? AppColors.green.withValues(alpha: 0.45) : Colors.transparent,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.high_quality_rounded,
-                          color: active ? AppColors.green : AppColors.navy,
-                          size: 22,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Row(
-                            children: [
-                              Text(
-                                q,
-                                style: AppTheme.body(15, color: AppColors.textPrimary, weight: FontWeight.w700),
-                              ),
-                              if (isDefault) ...[
-                                const SizedBox(width: 8),
-                                Text(
-                                  'chaguo-msingi',
-                                  style: AppTheme.body(11, color: AppColors.textHint, weight: FontWeight.w600),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        if (active)
-                          const Icon(Icons.check_circle_rounded, color: AppColors.green, size: 22)
-                        else
-                          Icon(Icons.circle_outlined, color: AppColors.textHint.withValues(alpha: 0.5), size: 22),
-                      ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 14),
+                      decoration: BoxDecoration(color: const Color(0xFFD6E7F5), borderRadius: BorderRadius.circular(3)),
                     ),
                   ),
-                ),
+                  Text('Badili Ubora', style: AppTheme.heading(19)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Chaguo-msingi ni 360p — bora kwa mtandao wa kawaida',
+                    style: AppTheme.body(12, color: AppColors.textHint, weight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 16),
+                  ...qualities.map((q) {
+                    final active = q == selected;
+                    final isDefault = q == '360p';
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: () => Navigator.of(context).pop(q),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            decoration: BoxDecoration(
+                              color: active ? AppColors.green.withValues(alpha: 0.10) : AppColors.section,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: active ? AppColors.green.withValues(alpha: 0.45) : Colors.transparent,
+                                width: 1.5,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.high_quality_rounded,
+                                  color: active ? AppColors.green : AppColors.navy,
+                                  size: 22,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Row(
+                                    children: [
+                                      Text(
+                                        q,
+                                        style: AppTheme.body(15, color: AppColors.textPrimary, weight: FontWeight.w700),
+                                      ),
+                                      if (isDefault) ...[
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'chaguo-msingi',
+                                          style: AppTheme.body(11, color: AppColors.textHint, weight: FontWeight.w600),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                if (active)
+                                  const Icon(Icons.check_circle_rounded, color: AppColors.green, size: 22)
+                                else
+                                  Icon(Icons.circle_outlined, color: AppColors.textHint.withValues(alpha: 0.5), size: 22),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                ],
               ),
-            );
-          }),
-        ],
+            ),
+          ),
+        ),
       ),
     );
   }

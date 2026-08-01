@@ -1,7 +1,7 @@
 name: leotena
 description: Leotena — Premium Android movies, series & live channels streaming app.
 publish_to: "none"
-version: 11.5.4+51
+version: 11.5.6+53
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

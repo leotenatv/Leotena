@@ -270,22 +270,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             Padding(
               padding: EdgeInsets.all(r.sp(18)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text('🔥 Zinazovuma sasa',
-                        style: AppTheme.body(r.sp(11), color: Colors.white, weight: FontWeight.w700)),
-                  ),
-                  SizedBox(height: r.sp(8)),
-                  Text(banner.title, style: AppTheme.heading(r.sp(r.isCompact ? 20 : 25), color: Colors.white)),
-                ],
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: Text(
+                  banner.title,
+                  style: AppTheme.heading(r.sp(r.isCompact ? 20 : 25), color: Colors.white),
+                ),
               ),
             ),
           ],
