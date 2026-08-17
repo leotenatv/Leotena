@@ -15,7 +15,7 @@ class ApiException implements Exception {
 class ApiClient {
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://leotena-api-production.up.railway.app',
+    defaultValue: 'https://leotena-production-d6b5.up.railway.app',
   );
 
   Uri _uri(String path) => Uri.parse('$baseUrl$path');

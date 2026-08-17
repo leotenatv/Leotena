@@ -346,7 +346,7 @@ router.post(
 
 /**
  * SonicPesa webhook — paste this URL in SonicPesa dashboard → Webhook System.
- * https://leotena-api-production.up.railway.app/webhooks/sonicpesa
+ * https://leotena-production-d6b5.up.railway.app/webhooks/sonicpesa
  */
 router.post(
   '/webhooks/sonicpesa',
