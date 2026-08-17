@@ -20,8 +20,17 @@ function getFirebaseApp() {
   return app;
 }
 
+function fcmReady() {
+  try {
+    getFirebaseApp();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 function messaging() {
   return admin.messaging(getFirebaseApp());
 }
 
-module.exports = { messaging };
+module.exports = { messaging, fcmReady };

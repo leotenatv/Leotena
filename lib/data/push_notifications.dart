@@ -1,6 +1,12 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+/// Leotena-only FCM topics (never shared-project `all_users`).
+const kLeotenaTopicAll = 'leotena_all_users';
+const kLeotenaTopicPremium = 'leotena_premium_users';
+const kLeotenaTopicFree = 'leotena_free_users';
 
 /// New channel id — Android never updates sound/importance on an existing
 /// channel, so a fresh id is required for WhatsApp-style audible alerts.
@@ -79,6 +85,29 @@ Future<String?> requestPushPermissionAndToken() async {
     return null;
   }
   return FirebaseMessaging.instance.getToken();
+}
+
+bool _canUseFcmTopics() {
+  if (kIsWeb) return false;
+  return defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+}
+
+/// Subscribe this install so Supasoka/admin broadcasts arrive even without a
+/// stored device token. Safe to call repeatedly.
+Future<void> subscribeLeotenaPushTopics({required bool isPremium}) async {
+  if (!_canUseFcmTopics()) return;
+  try {
+    final messaging = FirebaseMessaging.instance;
+    await messaging.subscribeToTopic(kLeotenaTopicAll);
+    if (isPremium) {
+      await messaging.subscribeToTopic(kLeotenaTopicPremium);
+      await messaging.unsubscribeFromTopic(kLeotenaTopicFree);
+    } else {
+      await messaging.subscribeToTopic(kLeotenaTopicFree);
+      await messaging.unsubscribeFromTopic(kLeotenaTopicPremium);
+    }
+  } catch (_) {}
 }
 
 String? _titleOf(RemoteMessage message) {

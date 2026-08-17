@@ -5,6 +5,13 @@ const { hasPremiumAccess } = require('./serialize');
 /** Must match the Android channel created in the Flutter app. */
 const ANDROID_ALERT_CHANNEL = 'leotena_alerts';
 
+/** Leotena-only topics — never reuse shared-project `all_users`. */
+const TOPIC_ALL = 'leotena_all_users';
+const TOPIC_PREMIUM = 'leotena_premium_users';
+const TOPIC_FREE = 'leotena_free_users';
+
+const FCM_TTL_MS = 28 * 24 * 60 * 60 * 1000;
+
 /** FCM errors that mean the token can never receive again — clear it. */
 const DEAD_TOKEN_CODES = new Set([
   'messaging/registration-token-not-registered',
@@ -38,6 +45,13 @@ function normalizeTarget(target) {
   return 'all';
 }
 
+function topicForTarget(target) {
+  const t = normalizeTarget(target);
+  if (t === 'premium') return TOPIC_PREMIUM;
+  if (t === 'free') return TOPIC_FREE;
+  return TOPIC_ALL;
+}
+
 function matchesAudience(device, target) {
   if (target === 'all') return true;
   const premium = hasPremiumAccess(device);
@@ -46,30 +60,40 @@ function matchesAudience(device, target) {
   return true;
 }
 
-function buildMulticastMessage(tokens, title, body, source) {
-  const data = {
+function androidConfig() {
+  return {
+    priority: 'high',
+    ttl: FCM_TTL_MS,
+    notification: {
+      channelId: ANDROID_ALERT_CHANNEL,
+      clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+      sound: 'default',
+      defaultSound: true,
+      defaultVibrateTimings: true,
+      priority: 'high',
+      visibility: 'public',
+    },
+  };
+}
+
+function dataPayload(title, body, source, target) {
+  return {
     title: String(title),
     body: String(body),
     message: String(body),
     source: String(source || 'leotena'),
-    click_action: 'FLUTTER_NOTIFICATION_CLICK',
+    target: String(target || 'all'),
+    kind: 'broadcast',
+    scope: 'broadcast',
   };
+}
+
+function buildMulticastMessage(tokens, title, body, source, target) {
   return {
     tokens,
     notification: { title, body },
-    data,
-    android: {
-      priority: 'high',
-      notification: {
-        channelId: ANDROID_ALERT_CHANNEL,
-        sound: 'default',
-        defaultSound: true,
-        defaultVibrateTimings: true,
-        priority: 'high',
-        visibility: 'public',
-        clickAction: 'FLUTTER_NOTIFICATION_CLICK',
-      },
-    },
+    data: dataPayload(title, body, source, target),
+    android: androidConfig(),
     apns: {
       headers: { 'apns-priority': '10' },
       payload: {
@@ -83,8 +107,31 @@ function buildMulticastMessage(tokens, title, body, source) {
   };
 }
 
+async function sendToTopic(title, body, target, source) {
+  const topic = topicForTarget(target);
+  const messageId = await messaging().send({
+    topic,
+    notification: { title, body },
+    data: dataPayload(title, body, source, target),
+    android: androidConfig(),
+    apns: {
+      headers: { 'apns-priority': '10' },
+      payload: {
+        aps: {
+          sound: 'default',
+          badge: 1,
+          'content-available': 0,
+        },
+      },
+    },
+  });
+  return { topic, messageId };
+}
+
 /**
- * Send a high-priority FCM notification to active Leotena devices.
+ * Send a high-priority FCM notification to Leotena devices.
+ * Topics reach every subscribed install even if no token is stored.
+ * Token multicast covers older installs that never subscribed to topics.
  * @param {{ title: string, body: string, target?: string, source?: string }} input
  */
 async function broadcastPush(input) {
@@ -96,6 +143,16 @@ async function broadcastPush(input) {
     const err = new Error('title and body are required');
     err.status = 400;
     throw err;
+  }
+
+  let topic = topicForTarget(target);
+  let messageId = null;
+  try {
+    const sent = await sendToTopic(title, body, target, source);
+    topic = sent.topic;
+    messageId = sent.messageId;
+  } catch (err) {
+    console.error('[push] topic send failed:', err && err.message ? err.message : err);
   }
 
   const devices = await prisma.device.findMany({
@@ -113,23 +170,28 @@ async function broadcastPush(input) {
   const deadTokenDeviceIds = [];
 
   if (targets.length > 0) {
-    const batches = chunk(targets, 500);
-    for (const batch of batches) {
-      const response = await messaging().sendEachForMulticast(
-        buildMulticastMessage(
-          batch.map((d) => d.fcmToken),
-          title,
-          body,
-          source
-        )
-      );
-      successCount += response.successCount;
-      failureCount += response.failureCount;
-      response.responses.forEach((r, i) => {
-        if (!r.success && r.error && DEAD_TOKEN_CODES.has(r.error.code)) {
-          deadTokenDeviceIds.push(batch[i].id);
-        }
-      });
+    try {
+      const batches = chunk(targets, 500);
+      for (const batch of batches) {
+        const response = await messaging().sendEachForMulticast(
+          buildMulticastMessage(
+            batch.map((d) => d.fcmToken),
+            title,
+            body,
+            source,
+            target
+          )
+        );
+        successCount += response.successCount;
+        failureCount += response.failureCount;
+        response.responses.forEach((r, i) => {
+          if (!r.success && r.error && DEAD_TOKEN_CODES.has(r.error.code)) {
+            deadTokenDeviceIds.push(batch[i].id);
+          }
+        });
+      }
+    } catch (err) {
+      console.error('[push] token multicast failed:', err && err.message ? err.message : err);
     }
   }
 
@@ -149,11 +211,23 @@ async function broadcastPush(input) {
     },
   });
 
-  return { log, successCount, failureCount, target };
+  return {
+    log,
+    successCount,
+    failureCount,
+    target,
+    topic,
+    messageId,
+    delivered: Boolean(messageId) || successCount > 0,
+  };
 }
 
 module.exports = {
   ANDROID_ALERT_CHANNEL,
+  TOPIC_ALL,
+  TOPIC_PREMIUM,
+  TOPIC_FREE,
   broadcastPush,
   normalizeTarget,
+  topicForTarget,
 };

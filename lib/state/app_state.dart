@@ -228,6 +228,7 @@ class AppState extends ChangeNotifier {
     try {
       final token = await requestPushPermissionAndToken();
       if (token != null) await _repo.updateFcmToken(id, token);
+      await subscribeLeotenaPushTopics(isPremium: _subscribed);
       await _fcmTokenSub?.cancel();
       _fcmTokenSub = FirebaseMessaging.instance.onTokenRefresh.listen((t) {
         _repo.updateFcmToken(id, t).catchError((_) {});
@@ -259,6 +260,7 @@ class AppState extends ChangeNotifier {
       until = DateTime.tryParse(premiumUntil);
       if (until != null) _subEnd = until;
     }
+    final wasPremium = _subscribed;
     if (access != null) {
       _subscribed = access;
       // Lifetime / repaired premium without an expiry must not be locked by a stale _subEnd.
@@ -269,6 +271,9 @@ class AppState extends ChangeNotifier {
     // Expired entitlement must not keep channels unlocked.
     if (_subscribed && !_subEnd.isAfter(DateTime.now())) {
       _subscribed = false;
+    }
+    if (wasPremium != _subscribed) {
+      unawaited(subscribeLeotenaPushTopics(isPremium: _subscribed));
     }
     if (_subscribed) _awaitingPaymentConfirmation = false;
     final name = json['name'] as String?;
@@ -291,6 +296,7 @@ class AppState extends ChangeNotifier {
       _subEnd = now.add(const Duration(days: 30));
     }
     _awaitingPaymentConfirmation = false;
+    unawaited(subscribeLeotenaPushTopics(isPremium: true));
     notifyListeners();
   }
 
