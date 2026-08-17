@@ -1,6 +1,7 @@
 const DEFAULT_BASE = 'https://api.sonicpesa.com';
 const SONICPESA_TIMEOUT_MS = 28_000;
-const API_ENVELOPE_STATUSES = new Set(['success', 'error', 'failed', 'failure', 'ok']);
+/** Outer transport OK only — never treat payment terminal states as "not a status". */
+const API_TRANSPORT_OK = new Set(['ok']);
 
 function sonicHeaders() {
   const h = {
@@ -26,17 +27,14 @@ function normalizeTzPhone(raw) {
   let digits = String(raw || '').replace(/\D/g, '');
   if (!digits) return null;
 
-  if (digits.startsWith('255') && digits.length >= 12) {
-    digits = digits.slice(3, 12);
-  } else if (digits.startsWith('0') && digits.length >= 10) {
-    digits = digits.slice(0, 10).slice(1);
-  } else if (digits.length === 9 && /^[67]/.test(digits)) {
-    // keep 9-digit national
-  } else {
-    return null;
+  while (digits.startsWith('255') && digits.length > 9) {
+    digits = digits.slice(3);
+  }
+  while (digits.startsWith('0')) {
+    digits = digits.slice(1);
   }
 
-  if (!/^[67]\d{8}$/.test(digits)) return null;
+  if (digits.length !== 9 || !/^[67]\d{8}$/.test(digits)) return null;
   return `255${digits}`;
 }
 
@@ -51,54 +49,185 @@ function normalizePaymentStatus(raw) {
   return String(raw ?? '')
     .trim()
     .toUpperCase()
-    .replace(/\s+/g, '');
+    .replace(/[\s_-]+/g, '');
 }
 
 function isSonicpesaSuccess(status) {
-  return status === 'SUCCESS' || status === 'COMPLETED' || status === 'PAID';
-}
-
-function isSonicpesaFailure(status) {
+  const s = normalizePaymentStatus(status);
   return (
-    status === 'CANCELLED' ||
-    status === 'USERCANCELLED' ||
-    status === 'REJECTED' ||
-    status === 'FAILED' ||
-    status === 'FAILURE' ||
-    status === 'EXPIRED'
+    s === 'SUCCESS' ||
+    s === 'SUCCESSFUL' ||
+    s === 'COMPLETED' ||
+    s === 'COMPLETE' ||
+    s === 'PAID' ||
+    s === 'DONE' ||
+    s === 'SETTLED' ||
+    s === 'TXNSUCCESS' ||
+    s === 'PAYMENTSUCCESS' ||
+    s === 'CONFIRMED'
   );
 }
 
-function unwrapSonicpesaBody(raw) {
-  const data = raw.data;
-  const fromData = data && typeof data === 'object' && !Array.isArray(data) ? data : null;
-  const osd = fromData?.order_status_data ?? raw.order_status_data;
-  const fromOsd = osd && typeof osd === 'object' && !Array.isArray(osd) ? osd : null;
-  return { ...raw, ...(fromData || {}), ...(fromOsd || {}) };
+function isSonicpesaFailure(status) {
+  const s = normalizePaymentStatus(status);
+  return (
+    s === 'CANCELLED' ||
+    s === 'CANCELED' ||
+    s === 'USERCANCELLED' ||
+    s === 'USERCANCELED' ||
+    s === 'REJECTED' ||
+    s === 'FAILED' ||
+    s === 'FAILURE' ||
+    s === 'EXPIRED' ||
+    s === 'DECLINED' ||
+    s === 'TIMEOUT' ||
+    s === 'TIMEDOUT' ||
+    s === 'ERROR'
+  );
 }
 
+function asRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
+
+/** SonicPesa wraps order fields in `data` (and sometimes `order_status_data`). */
+function unwrapSonicpesaBody(raw) {
+  const fromData = asRecord(raw.data);
+  const osd = asRecord(fromData?.order_status_data ?? raw.order_status_data);
+  return { ...raw, ...(fromData || {}), ...(osd || {}) };
+}
+
+/**
+ * API-level rejection (bad key, validation) — NOT payment FAILED/SUCCESS.
+ * Payment terminal states must flow through readPaymentStatus / isSonicpesaSuccess.
+ */
 function sonicpesaApiError(raw, httpStatus) {
+  if (httpStatus >= 400) {
+    return String(raw.error ?? raw.message ?? `SonicPesa HTTP ${httpStatus}`).trim();
+  }
+
   const topStatus = String(raw.status ?? '')
     .trim()
     .toLowerCase();
-  if (topStatus === 'error' || topStatus === 'failed' || topStatus === 'failure') {
-    return String(raw.message ?? raw.error ?? 'SonicPesa rejected the request').trim();
-  }
-  if (!httpStatus || httpStatus < 400) return undefined;
-  return String(raw.error ?? raw.message ?? `SonicPesa HTTP ${httpStatus}`).trim();
+  if (topStatus !== 'error') return undefined;
+
+  const data = asRecord(raw.data);
+  const hasOrderContext = Boolean(
+    raw.order_id ||
+      raw.orderId ||
+      raw.payment_status ||
+      raw.order_status ||
+      (data && (data.order_id || data.orderId || data.payment_status || data.status))
+  );
+  if (hasOrderContext) return undefined;
+
+  return String(raw.message ?? raw.error ?? 'SonicPesa rejected the request').trim();
 }
 
 function readOrderId(body) {
   return String(body.order_id ?? body.orderId ?? body.id ?? '').trim();
 }
 
-function readPaymentStatus(body) {
-  const statusField = body.status;
-  const statusStr = typeof statusField === 'string' ? statusField.trim().toLowerCase() : '';
-  const statusIsPayment = statusStr.length > 0 && !API_ENVELOPE_STATUSES.has(statusStr);
-  return normalizePaymentStatus(
-    body.payment_status ?? body.order_status ?? (statusIsPayment ? statusField : undefined) ?? 'PENDING'
+function firstNonEmpty(...values) {
+  for (const v of values) {
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) return s;
+  }
+  return undefined;
+}
+
+function readBuyerPhone(body) {
+  return String(
+    body.buyer_phone ?? body.buyerPhone ?? body.phone ?? body.customer_phone ?? body.msisdn ?? ''
+  ).trim();
+}
+
+/**
+ * Extract payment status from SonicPesa create_order / order_status payloads.
+ *
+ * Critical: SonicPesa uses `status: "success"` for BOTH the API envelope and a paid order.
+ * Older code treated any "success"/"failed" as envelope-only and defaulted to PENDING, so
+ * successful payments never upgraded accounts when the webhook was missing.
+ */
+function readPaymentStatus(raw) {
+  const fromData = asRecord(raw.data);
+  const fromOsd = asRecord(fromData?.order_status_data ?? raw.order_status_data);
+  const body = unwrapSonicpesaBody(raw);
+
+  const explicit = firstNonEmpty(
+    body.payment_status,
+    body.order_status,
+    body.transaction_status,
+    body.txn_status,
+    fromOsd?.payment_status,
+    fromOsd?.order_status,
+    fromData?.payment_status,
+    fromData?.order_status
   );
+  if (explicit) return normalizePaymentStatus(explicit);
+
+  const nestedStatus = firstNonEmpty(fromOsd?.status, fromData?.status);
+  if (nestedStatus) {
+    const n = normalizePaymentStatus(nestedStatus);
+    if (n !== 'OK') return n;
+  }
+
+  const top = firstNonEmpty(raw.status);
+  if (top) {
+    const lower = top.toLowerCase();
+    if (API_TRANSPORT_OK.has(lower)) return 'PENDING';
+
+    const hasOrderContext = Boolean(
+      body.order_id ||
+        body.orderId ||
+        body.amount != null ||
+        body.reference ||
+        body.buyer_phone ||
+        body.buyerPhone ||
+        fromData
+    );
+
+    if ((lower === 'success' || lower === 'error') && !hasOrderContext) {
+      return 'PENDING';
+    }
+
+    return normalizePaymentStatus(top);
+  }
+
+  return 'PENDING';
+}
+
+/** Normalize webhook JSON (top-level or nested `data`). */
+function readWebhookPaymentFields(b) {
+  const nested = asRecord(b.data);
+  const status = normalizePaymentStatus(
+    b.payment_status ??
+      b.order_status ??
+      nested?.payment_status ??
+      nested?.order_status ??
+      nested?.status ??
+      b.status
+  );
+  return {
+    status,
+    event: String(b.event ?? nested?.event ?? '')
+      .trim()
+      .toLowerCase(),
+    orderId: String(b.order_id ?? b.orderId ?? nested?.order_id ?? nested?.orderId ?? '').trim(),
+    transid: String(b.transid ?? b.transaction_id ?? nested?.transid ?? '').trim(),
+    phone: String(
+      b.buyer_phone ??
+        b.buyerPhone ??
+        b.phone ??
+        b.customer_phone ??
+        b.msisdn ??
+        nested?.buyer_phone ??
+        nested?.phone ??
+        ''
+    ).trim(),
+    amount: Number(b.amount ?? nested?.amount ?? 0),
+  };
 }
 
 async function sonicpesaPost(path, payload) {
@@ -138,7 +267,7 @@ async function sonicpesaCreateOrder(input) {
 
   const body = unwrapSonicpesaBody(raw);
   const orderId = readOrderId(body);
-  const paymentStatus = readPaymentStatus(body);
+  const paymentStatus = readPaymentStatus(raw);
   const wrappedError = sonicpesaApiError(raw, 0);
 
   return {
@@ -149,6 +278,7 @@ async function sonicpesaCreateOrder(input) {
     status: paymentStatus,
     amount: Number(body.amount ?? input.amount),
     currency: String(body.currency ?? input.currency),
+    buyer_phone: readBuyerPhone(body) || undefined,
     error: orderId && !wrappedError ? undefined : wrappedError || 'SonicPesa did not return an order id',
     raw,
   };
@@ -166,7 +296,7 @@ async function sonicpesaOrderStatus(orderId) {
   if (apiError) return { ok: false, error: apiError, raw };
 
   const body = unwrapSonicpesaBody(raw);
-  const paymentStatus = readPaymentStatus(body);
+  const paymentStatus = readPaymentStatus(raw);
   return {
     ok: true,
     order_id: readOrderId(body) || orderId,
@@ -175,6 +305,7 @@ async function sonicpesaOrderStatus(orderId) {
     reference: String(body.reference ?? '').trim() || undefined,
     amount: body.amount != null ? Number(body.amount) : undefined,
     currency: body.currency != null ? String(body.currency) : undefined,
+    buyer_phone: readBuyerPhone(body) || undefined,
     raw,
   };
 }
@@ -186,6 +317,8 @@ module.exports = {
   normalizePaymentStatus,
   isSonicpesaSuccess,
   isSonicpesaFailure,
+  readPaymentStatus,
+  readWebhookPaymentFields,
   sonicpesaCreateOrder,
   sonicpesaOrderStatus,
 };

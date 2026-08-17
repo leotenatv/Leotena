@@ -100,6 +100,22 @@ function serializeDevice(row) {
   };
 }
 
+const DEFAULT_PLAY_STORE_URL =
+  'https://play.google.com/store/apps/details?id=com.ghettodevelopers.leotena';
+
+function serializeSettings(row) {
+  return {
+    supportWhatsApp: row.supportWhatsApp,
+    maintenanceMode: Boolean(row.maintenanceMode),
+    maintenanceMessage: row.maintenanceMessage || '',
+    forceUpdateEnabled: Boolean(row.forceUpdateEnabled),
+    minCodeVersion: Number(row.minCodeVersion) || 0,
+    minAppVersion: row.minAppVersion || '',
+    forceUpdateMessage: row.forceUpdateMessage || '',
+    playStoreUrl: row.playStoreUrl || DEFAULT_PLAY_STORE_URL,
+  };
+}
+
 function serializeNotificationLog(row) {
   return {
     id: row.id,
@@ -133,5 +149,7 @@ module.exports = {
   serializeDevice,
   serializeSubscription,
   serializeNotificationLog,
+  serializeSettings,
   hasPremiumAccess,
+  DEFAULT_PLAY_STORE_URL,
 };

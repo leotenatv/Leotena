@@ -5,6 +5,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 
 const { errorHandler } = require('./middleware/errorHandler');
+const { startPendingPaymentSweeper } = require('./lib/premiumPayment');
 
 const app = express();
 
@@ -22,6 +23,7 @@ app.use(require('./routes/pricing.routes'));
 app.use(require('./routes/devices.routes'));
 app.use(require('./routes/subscriptions.routes'));
 app.use(require('./routes/notifications.routes'));
+app.use(require('./routes/partner.routes'));
 app.use(require('./routes/payments.routes'));
 
 app.use((req, res) => {
@@ -33,4 +35,5 @@ app.use(errorHandler);
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
   console.log(`leotena-server listening on :${port}`);
+  startPendingPaymentSweeper();
 });

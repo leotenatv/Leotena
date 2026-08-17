@@ -1,7 +1,7 @@
 name: leotena
 description: Leotena — Premium Android movies, series & live channels streaming app.
 publish_to: "none"
-version: 11.5.6+53
+version: 11.6.0+55
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -21,6 +21,14 @@ dependencies:
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.6
   flutter_local_notifications: ^18.0.1
+  package_info_plus: ^8.1.2
+
+# Ubuntu 26.04 has no WPE WebKit. The real flutter_inappwebview_linux plugin
+# fails CMake; this stub lets `flutter run -d linux` build. Playback stays on
+# Android / iOS / Chrome.
+dependency_overrides:
+  flutter_inappwebview_linux:
+    path: tool/flutter_inappwebview_linux_stub
 
 dev_dependencies:
   flutter_test:

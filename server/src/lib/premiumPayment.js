@@ -1,4 +1,14 @@
 const prisma = require('../db');
+const {
+  sonicpesaConfigured,
+  normalizeTzPhone,
+  toLocalTzPhone,
+  normalizePaymentStatus,
+  isSonicpesaSuccess,
+  isSonicpesaFailure,
+  sonicpesaOrderStatus,
+} = require('./sonicpesa');
+const { hasPremiumAccess } = require('./serialize');
 
 async function withDbRetry(fn, attempts = 3, delayMs = 400) {
   let lastErr;
@@ -72,8 +82,24 @@ async function upsertPendingSonicpesaTransaction(input) {
 }
 
 /**
+ * True when a completed payment never produced an active premium window.
+ * Do NOT re-extend after a legitimate expiry: a proper grant sets
+ * premiumUntil = completedAt + duration, so completedAt < premiumUntil
+ * always holds even after the window ends.
+ */
+function needsPremiumRepair(existingTx, device) {
+  if (!existingTx || existingTx.status !== 'completed') return false;
+  if (!device?.premiumUntil) return true;
+  const until = new Date(device.premiumUntil).getTime();
+  if (until > Date.now()) return false;
+  const completedAt = existingTx.updatedAt || existingTx.createdAt;
+  if (!completedAt) return false;
+  return new Date(completedAt).getTime() >= until;
+}
+
+/**
  * Grant/extend premium on Device + mark payment completed + write SubscriptionRecord.
- * Idempotent on orderId (provider_ref).
+ * Idempotent on orderId (provider_ref). Repairs completed rows that never applied premium.
  */
 async function grantPremiumFromPayment(input) {
   const deviceId = input.deviceId.trim();
@@ -84,14 +110,15 @@ async function grantPremiumFromPayment(input) {
   }
 
   const existingTx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
-  if (existingTx?.status === 'completed') {
-    const device = await prisma.device.findUnique({ where: { deviceId } });
+  const devicePreview = await prisma.device.findUnique({ where: { deviceId } });
+  if (existingTx?.status === 'completed' && !needsPremiumRepair(existingTx, devicePreview)) {
     return {
       ok: true,
-      premium_until: device?.premiumUntil ? device.premiumUntil.toISOString() : null,
+      premium_until: devicePreview?.premiumUntil ? devicePreview.premiumUntil.toISOString() : null,
       already_completed: true,
     };
   }
+  const repairing = existingTx?.status === 'completed';
 
   const plan = await prisma.pricingPlan.findUnique({ where: { id: input.planId || existingTx?.planId || '' } });
   const meta =
@@ -154,15 +181,17 @@ async function grantPremiumFromPayment(input) {
       },
     });
 
-    await tx.subscriptionRecord.create({
-      data: {
-        deviceRecordId: device.id,
-        userName,
-        packageName: planName,
-        amount: `TZS ${amount.toLocaleString('en-US')}`,
-        success: true,
-      },
-    });
+    if (!repairing) {
+      await tx.subscriptionRecord.create({
+        data: {
+          deviceRecordId: device.id,
+          userName,
+          packageName: planName,
+          amount: `TZS ${amount.toLocaleString('en-US')}`,
+          success: true,
+        },
+      });
+    }
 
     return updated;
   });
@@ -251,6 +280,156 @@ function localPaymentsAllowed() {
   return flag === '1' || flag === 'true' || flag === 'yes';
 }
 
+async function findDeviceIdByPhone(phoneRaw) {
+  const local = toLocalTzPhone(phoneRaw);
+  const intl = normalizeTzPhone(phoneRaw);
+  const candidates = [local, intl, local ? local.slice(1) : null].filter(Boolean);
+  if (!candidates.length) return null;
+  const row = await prisma.device.findFirst({
+    where: { phone: { in: candidates } },
+    orderBy: { updatedAt: 'desc' },
+  });
+  return row?.deviceId?.trim() || null;
+}
+
+async function resolvePlanByAmount(amount) {
+  const amt = Math.round(Number(amount));
+  if (!(amt > 0)) return null;
+  const plans = await prisma.pricingPlan.findMany();
+  const scored = plans
+    .map((p) => ({ p, price: parseAmountTzs(p.price), diff: Math.abs(parseAmountTzs(p.price) - amt) }))
+    .filter((x) => x.price > 0);
+  const exact = scored.find((x) => x.price === amt);
+  if (exact) return exact.p;
+  const near = scored.filter((x) => x.diff <= 100).sort((a, b) => a.diff - b.diff || (b.p.active ? 1 : 0) - (a.p.active ? 1 : 0));
+  return near[0]?.p ?? null;
+}
+
+async function grantFromTx(tx, source) {
+  return grantPremiumFromPayment({
+    deviceId: tx.deviceId,
+    userName: tx.userName || 'Mtumiaji',
+    phone: tx.phone || '',
+    amount: Number(tx.amount),
+    method: tx.method || 'Mobile Money',
+    planId: tx.planId,
+    planName: tx.planName,
+    providerRef: tx.orderId,
+    metadata: { source, sonicpesa_status: tx.status },
+  });
+}
+
+async function settlePendingTxFromSonicpesa(tx, source) {
+  const remote = await sonicpesaOrderStatus(tx.orderId);
+  if (!remote.ok) return null;
+  const status = normalizePaymentStatus(remote.payment_status ?? remote.status ?? 'PENDING');
+  if (isSonicpesaFailure(status)) {
+    await markPaymentFailed(tx.orderId, { sonicpesa_status: status, closed_at: source });
+    return null;
+  }
+  if (!isSonicpesaSuccess(status)) return null;
+  return grantPremiumFromPayment({
+    deviceId: tx.deviceId,
+    userName: tx.userName || 'Mtumiaji',
+    phone: tx.phone || '',
+    amount: Number(tx.amount) || Number(remote.amount ?? 0),
+    method: tx.method || 'Mobile Money',
+    planId: tx.planId,
+    planName: tx.planName,
+    providerRef: tx.orderId,
+    metadata: { source, sonicpesa_status: status },
+  });
+}
+
+/**
+ * If this device paid but never received premium (missed webhook / poll), grant now.
+ * Cheap no-op when the account is already premium.
+ */
+async function reconcileDevicePremium(deviceId) {
+  const id = String(deviceId || '').trim();
+  if (!id) return null;
+
+  try {
+    const device = await prisma.device.findUnique({ where: { deviceId: id } });
+    if (device && hasPremiumAccess(device)) return device.premiumUntil ? device.premiumUntil.toISOString() : null;
+
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const stuck = await prisma.paymentTransaction.findMany({
+      where: { deviceId: id, status: 'completed', amount: { gt: 0 } },
+      orderBy: { updatedAt: 'desc' },
+      take: 3,
+    });
+    for (const tx of stuck) {
+      if (!needsPremiumRepair(tx, device)) continue;
+      const granted = await withDbRetry(() => grantFromTx(tx, 'stuck-completed-repair'));
+      if (granted.premium_until && Date.parse(granted.premium_until) > Date.now()) {
+        return granted.premium_until;
+      }
+    }
+
+    if (!sonicpesaConfigured()) return null;
+
+    const pending = await prisma.paymentTransaction.findMany({
+      where: {
+        deviceId: id,
+        status: 'pending',
+        amount: { gt: 0 },
+        createdAt: { gt: since },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 2,
+    });
+    for (const tx of pending) {
+      try {
+        const granted = await withDbRetry(() => settlePendingTxFromSonicpesa(tx, 'device-reconcile'));
+        if (granted?.premium_until && Date.parse(granted.premium_until) > Date.now()) {
+          return granted.premium_until;
+        }
+      } catch (e) {
+        console.warn('reconcile pending payment failed', tx.orderId, e.message || e);
+      }
+    }
+  } catch (e) {
+    console.warn('reconcileDevicePremium failed', id, e.message || e);
+  }
+  return null;
+}
+
+const _sweepInFlight = new Set();
+let _sweepTimer = null;
+
+async function sweepPendingSonicpesaPayments() {
+  if (!sonicpesaConfigured()) return;
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const pending = await prisma.paymentTransaction.findMany({
+    where: { status: 'pending', amount: { gt: 0 }, createdAt: { gt: since } },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+  });
+  for (const tx of pending) {
+    if (_sweepInFlight.has(tx.orderId)) continue;
+    _sweepInFlight.add(tx.orderId);
+    try {
+      await settlePendingTxFromSonicpesa(tx, 'pending-sweeper');
+    } catch (e) {
+      console.error('pending payment sweep failed', tx.orderId, e);
+    } finally {
+      _sweepInFlight.delete(tx.orderId);
+    }
+  }
+}
+
+function startPendingPaymentSweeper() {
+  if (_sweepTimer) return;
+  const tick = () => {
+    sweepPendingSonicpesaPayments().catch((e) => console.error('payment sweeper', e));
+  };
+  setTimeout(tick, 12_000);
+  _sweepTimer = setInterval(tick, 60_000);
+  if (typeof _sweepTimer.unref === 'function') _sweepTimer.unref();
+}
+
 module.exports = {
   withDbRetry,
   parseAmountTzs,
@@ -259,4 +438,8 @@ module.exports = {
   markPaymentFailed,
   completeLocalZeroPayment,
   localPaymentsAllowed,
+  findDeviceIdByPhone,
+  resolvePlanByAmount,
+  reconcileDevicePremium,
+  startPendingPaymentSweeper,
 };

@@ -16,7 +16,8 @@ plugins {
 
 android {
     namespace = "com.ghettodevelopers.leotena"
-    compileSdk = flutter.compileSdkVersion
+    // Google Play requires target/compile SDK 36 (Android 16) as of 31 Aug 2026.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -31,9 +32,16 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    packaging {
+        jniLibs {
+            // Required for Google Play 16 KB page-size devices (API 35+).
+            useLegacyPackaging = false
+        }
     }
 
     signingConfigs {

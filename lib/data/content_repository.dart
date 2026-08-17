@@ -63,9 +63,9 @@ class ContentRepository {
     return raw.map((e) => SubscriptionPackage.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  Future<String> fetchSupportWhatsApp() async {
+  Future<AppSettings> fetchSettings() async {
     final res = await client.get('/settings');
-    return res['supportWhatsApp'] as String;
+    return AppSettings.fromJson(res as Map<String, dynamic>);
   }
 
   Future<Map<String, dynamic>> registerDevice(String deviceId, {String? name, String? phone}) async {

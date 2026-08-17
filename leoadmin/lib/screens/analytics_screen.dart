@@ -39,7 +39,7 @@ class AnalyticsScreen extends StatelessWidget {
                   _StatTile(label: 'Watumiaji', value: '${state.users.length}'),
                   _StatTile(label: 'Premium', value: '${state.premiumUserCount}'),
                   _StatTile(label: 'Malipo', value: '${state.successfulPaymentsCount}'),
-                  _StatTile(label: 'Mapato', value: state.revenueLabel),
+                  _StatTile(label: 'Mapato ya leo', value: state.revenueLabel),
                 ],
               );
             },

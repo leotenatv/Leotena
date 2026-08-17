@@ -164,7 +164,7 @@ class _HeroBanner extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('Mapato', style: AdminTheme.body(11, color: Colors.white70)),
+                Text('Mapato ya leo', style: AdminTheme.body(11, color: Colors.white70)),
                 Text(revenue, style: AdminTheme.heading(16, color: Colors.white)),
               ],
             ),

@@ -43,6 +43,73 @@ const kCategoryLabels = <String, String>{
   'wanyama': 'Wanyama',
 };
 
+class AdminSettings {
+  final String supportWhatsApp;
+  final bool maintenanceMode;
+  final String maintenanceMessage;
+  final bool forceUpdateEnabled;
+  final int minCodeVersion;
+  final String minAppVersion;
+  final String forceUpdateMessage;
+  final String playStoreUrl;
+
+  const AdminSettings({
+    this.supportWhatsApp = '255712345678',
+    this.maintenanceMode = false,
+    this.maintenanceMessage = '',
+    this.forceUpdateEnabled = false,
+    this.minCodeVersion = 0,
+    this.minAppVersion = '',
+    this.forceUpdateMessage = '',
+    this.playStoreUrl = 'https://play.google.com/store/apps/details?id=com.ghettodevelopers.leotena',
+  });
+
+  factory AdminSettings.fromJson(Map<String, dynamic> json) => AdminSettings(
+        supportWhatsApp: json['supportWhatsApp'] as String? ?? '255712345678',
+        maintenanceMode: json['maintenanceMode'] as bool? ?? false,
+        maintenanceMessage: json['maintenanceMessage'] as String? ?? '',
+        forceUpdateEnabled: json['forceUpdateEnabled'] as bool? ?? false,
+        minCodeVersion: (json['minCodeVersion'] as num?)?.toInt() ?? 0,
+        minAppVersion: json['minAppVersion'] as String? ?? '',
+        forceUpdateMessage: json['forceUpdateMessage'] as String? ?? '',
+        playStoreUrl: json['playStoreUrl'] as String? ??
+            'https://play.google.com/store/apps/details?id=com.ghettodevelopers.leotena',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'supportWhatsApp': supportWhatsApp,
+        'maintenanceMode': maintenanceMode,
+        'maintenanceMessage': maintenanceMessage,
+        'forceUpdateEnabled': forceUpdateEnabled,
+        'minCodeVersion': minCodeVersion,
+        'minAppVersion': minAppVersion,
+        'forceUpdateMessage': forceUpdateMessage,
+        'playStoreUrl': playStoreUrl,
+      };
+
+  AdminSettings copyWith({
+    String? supportWhatsApp,
+    bool? maintenanceMode,
+    String? maintenanceMessage,
+    bool? forceUpdateEnabled,
+    int? minCodeVersion,
+    String? minAppVersion,
+    String? forceUpdateMessage,
+    String? playStoreUrl,
+  }) {
+    return AdminSettings(
+      supportWhatsApp: supportWhatsApp ?? this.supportWhatsApp,
+      maintenanceMode: maintenanceMode ?? this.maintenanceMode,
+      maintenanceMessage: maintenanceMessage ?? this.maintenanceMessage,
+      forceUpdateEnabled: forceUpdateEnabled ?? this.forceUpdateEnabled,
+      minCodeVersion: minCodeVersion ?? this.minCodeVersion,
+      minAppVersion: minAppVersion ?? this.minAppVersion,
+      forceUpdateMessage: forceUpdateMessage ?? this.forceUpdateMessage,
+      playStoreUrl: playStoreUrl ?? this.playStoreUrl,
+    );
+  }
+}
+
 class DashboardStats {
   final int totalUsers;
   final int premiumUsers;
@@ -494,6 +561,8 @@ class SubscriptionRecord {
   final String amount;
   final String date;
   final bool success;
+  /// Original timestamp from the API (UTC). Used to bucket daily revenue in EAT.
+  final DateTime? createdAt;
 
   const SubscriptionRecord({
     required this.id,
@@ -502,18 +571,21 @@ class SubscriptionRecord {
     required this.amount,
     required this.date,
     required this.success,
+    this.createdAt,
   });
 
-  factory SubscriptionRecord.fromJson(Map<String, dynamic> json) => SubscriptionRecord(
-        id: json['id'] as String,
-        user: json['user'] as String? ?? '',
-        packageName: json['packageName'] as String? ?? '',
-        amount: json['amount'] as String? ?? '',
-        date: json['date'] != null
-            ? DateFormat('MMM d, yyyy').format(DateTime.parse(json['date'] as String).toLocal())
-            : '',
-        success: json['success'] as bool? ?? true,
-      );
+  factory SubscriptionRecord.fromJson(Map<String, dynamic> json) {
+    final createdAt = json['date'] != null ? DateTime.tryParse(json['date'] as String) : null;
+    return SubscriptionRecord(
+      id: json['id'] as String,
+      user: json['user'] as String? ?? '',
+      packageName: json['packageName'] as String? ?? '',
+      amount: json['amount'] as String? ?? '',
+      date: createdAt != null ? DateFormat('MMM d, yyyy').format(createdAt.toLocal()) : '',
+      success: json['success'] as bool? ?? true,
+      createdAt: createdAt,
+    );
+  }
 }
 
 /// A broadcast push notification the admin sent, with delivery counts.

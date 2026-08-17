@@ -13,7 +13,7 @@ class AdminState extends ChangeNotifier {
   String _section = 'dashboard';
   String _userQuery = '';
   String _channelQuery = '';
-  String _supportWhatsApp = '255712345678';
+  AdminSettings _settings = const AdminSettings();
 
   List<PricingPlan> _pricingPlans = [];
   List<AdminChannel> _channels = [];
@@ -45,7 +45,8 @@ class AdminState extends ChangeNotifier {
   String get section => _section;
   String get userQuery => _userQuery;
   String get channelQuery => _channelQuery;
-  String get supportWhatsApp => _supportWhatsApp;
+  String get supportWhatsApp => _settings.supportWhatsApp;
+  AdminSettings get settings => _settings;
   List<PricingPlan> get pricingPlans => List.unmodifiable(_pricingPlans);
   List<AdminChannel> get channels => List.unmodifiable(_channels);
   List<AdminScheduleItem> get schedule => List.unmodifiable(_schedule);
@@ -64,10 +65,22 @@ class AdminState extends ChangeNotifier {
   int get liveChannelCount => _channels.where((c) => c.live && c.active).length;
   int get successfulPaymentsCount => _subscriptions.where((s) => s.success).length;
 
-  /// Sum of successful payment amounts (digits only from strings like "TZS 5,000").
+  /// Tanzania (EAT, UTC+3) has no DST — daily revenue resets at local 00:00.
+  static const Duration _eatOffset = Duration(hours: 3);
+
+  DateTime get _eatNow => DateTime.now().toUtc().add(_eatOffset);
+
+  bool _isTodayEat(DateTime? dt) {
+    if (dt == null) return false;
+    final eat = dt.toUtc().add(_eatOffset);
+    final now = _eatNow;
+    return eat.year == now.year && eat.month == now.month && eat.day == now.day;
+  }
+
+  /// Successful payment amounts for today only (EAT). Resets at 00:00.
   int get revenueTzs {
     var total = 0;
-    for (final s in _subscriptions.where((s) => s.success)) {
+    for (final s in _subscriptions.where((s) => s.success && _isTodayEat(s.createdAt))) {
       total += int.tryParse(s.amount.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
     }
     return total;
@@ -162,7 +175,7 @@ class AdminState extends ChangeNotifier {
 
   Future<void> _loadSettings() async {
     try {
-      _supportWhatsApp = await _repo.getSettings();
+      _settings = await _repo.getSettings();
     } catch (_) {
       // keep the previous/default value
     }
@@ -266,10 +279,12 @@ class AdminState extends ChangeNotifier {
     }
   }
 
-  Future<void> updateSupportWhatsApp(String number) async {
-    final digits = number.replaceAll(RegExp(r'\D'), '');
-    if (digits.length < 9) return;
-    _supportWhatsApp = await _repo.updateSettings(digits);
+  Future<void> updateSettings(AdminSettings settings) async {
+    final digits = settings.supportWhatsApp.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 9) {
+      throw ApiException(400, 'Namba ya WhatsApp si sahihi');
+    }
+    _settings = await _repo.updateSettings(settings.copyWith(supportWhatsApp: digits));
     notifyListeners();
   }
 

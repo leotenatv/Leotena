@@ -1,0 +1,21 @@
+name: flutter_inappwebview_linux
+description: No-op Linux stub. WPE WebKit is not in Ubuntu 26.04, so the real plugin cannot build. Playback is Android / iOS / Web only.
+version: 0.1.0-beta.1
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.16.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_inappwebview_platform_interface: ^1.4.0-beta.3
+
+flutter:
+  plugin:
+    implements: flutter_inappwebview
+    platforms:
+      linux:
+        pluginClass: FlutterInappwebviewLinuxPlugin
+        dartPluginClass: LinuxInAppWebViewPlatform

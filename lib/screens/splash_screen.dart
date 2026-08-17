@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
-import 'root_shell.dart';
+import 'app_gate.dart';
 
 /// Animated splash: scaling logo, pulsing dots, fade to Home. Also where the
 /// app first talks to the backend — content and device registration load
@@ -43,7 +43,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     }
     Navigator.of(context).pushReplacement(PageRouteBuilder(
       transitionDuration: const Duration(milliseconds: 500),
-      pageBuilder: (_, a, __) => FadeTransition(opacity: a, child: const RootShell()),
+      pageBuilder: (_, a, __) => FadeTransition(opacity: a, child: const AppGate()),
     ));
   }
 

@@ -10,6 +10,7 @@ const {
   isSonicpesaFailure,
   sonicpesaCreateOrder,
   sonicpesaOrderStatus,
+  readWebhookPaymentFields,
 } = require('../lib/sonicpesa');
 const {
   detectTzMobileNetwork,
@@ -25,6 +26,8 @@ const {
   markPaymentFailed,
   completeLocalZeroPayment,
   localPaymentsAllowed,
+  findDeviceIdByPhone,
+  resolvePlanByAmount,
 } = require('../lib/premiumPayment');
 const { serializeDevice } = require('../lib/serialize');
 
@@ -220,6 +223,25 @@ router.post(
     }
 
     if (tx.status === 'completed' || orderId.startsWith('local-')) {
+      if (tx.status === 'completed' && !orderId.startsWith('local-')) {
+        try {
+          await withDbRetry(() =>
+            grantPremiumFromPayment({
+              deviceId,
+              userName: String(b.userName || b.user_name || tx.userName || 'Mtumiaji').trim(),
+              phone: toLocalTzPhone(String(b.phone || tx.phone || '').trim()) || tx.phone,
+              amount: Number(tx.amount),
+              method: tx.method || 'Mobile Money',
+              planId: tx.planId,
+              planName: tx.planName,
+              providerRef: orderId,
+              metadata: { source: 'status-completed-repair' },
+            })
+          );
+        } catch (e) {
+          console.error('repair completed payment on status poll', e);
+        }
+      }
       const device = await prisma.device.findUnique({ where: { deviceId } });
       return res.json({
         ok: true,
@@ -330,12 +352,12 @@ router.post(
   '/webhooks/sonicpesa',
   asyncRoute(async (req, res) => {
     const b = req.body || {};
-    const orderId = String(b.order_id ?? b.orderId ?? '').trim();
-    const status = normalizePaymentStatus(b.status ?? b.payment_status);
-    const event = String(b.event ?? '')
-      .trim()
-      .toLowerCase();
-    const transid = String(b.transid ?? b.transaction_id ?? '').trim();
+    const parsed = readWebhookPaymentFields(b);
+    const orderId = parsed.orderId;
+    const status = parsed.status;
+    const event = parsed.event;
+    const transid = parsed.transid;
+    const webhookPhone = parsed.phone;
 
     const webhookSecret = (process.env.SONICPESA_WEBHOOK_SECRET || '').trim();
     if (webhookSecret) {
@@ -349,24 +371,68 @@ router.post(
 
     if (!orderId) return res.status(400).json({ error: 'order_id is required' });
 
-    const tx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
-    if (!tx) {
-      console.warn('SonicPesa webhook: unknown order_id', orderId, event);
-      return res.json({ ok: true, ignored: true, reason: 'order_not_found' });
-    }
-
     const completedEvent = event === 'payment.completed' || event === 'payment.success';
     const success = completedEvent || isSonicpesaSuccess(status);
     const failed = isSonicpesaFailure(status);
 
-    if (tx.status === 'completed') {
-      return res.json({ ok: true, already_completed: true, order_id: orderId });
+    let tx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+
+    // Orphan recovery: paid webhook for an order we never stored (initiate DB failure).
+    if (!tx && success) {
+      let buyerPhone = webhookPhone;
+      let amount = parsed.amount;
+      try {
+        const remote = await sonicpesaOrderStatus(orderId);
+        if (remote.ok) {
+          if (!buyerPhone && remote.buyer_phone) buyerPhone = remote.buyer_phone;
+          if (!(amount > 0) && remote.amount != null) amount = Number(remote.amount);
+        }
+      } catch (e) {
+        console.warn('SonicPesa webhook: order_status lookup failed for orphan', e);
+      }
+
+      const deviceId = buyerPhone ? await findDeviceIdByPhone(buyerPhone) : null;
+      const plan = amount > 0 ? await resolvePlanByAmount(amount) : null;
+      if (!deviceId || !plan) {
+        console.warn('SonicPesa webhook: unknown order_id and cannot recover', orderId, {
+          hasPhone: Boolean(buyerPhone),
+          amount,
+        });
+        return res.status(500).json({ error: 'order_not_found_retry' });
+      }
+
+      const localPhone = toLocalTzPhone(buyerPhone) || buyerPhone;
+      try {
+        await withDbRetry(() =>
+          upsertPendingSonicpesaTransaction({
+            deviceId,
+            userName: 'Mtumiaji',
+            phone: localPhone,
+            amount: Math.round(amount),
+            planId: plan.id,
+            planName: plan.name,
+            orderId,
+            method: mobileMoneyMethodLabel(detectTzMobileNetwork(localPhone)),
+            metadata: { source: 'sonicpesa-webhook-orphan', sonicpesa_event: event, planDays: plan.days },
+          })
+        );
+        tx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+      } catch (e) {
+        console.error('SonicPesa webhook: orphan pending upsert failed', e);
+        return res.status(500).json({ error: 'orphan recovery failed, will retry' });
+      }
+    }
+
+    if (!tx) {
+      console.warn('SonicPesa webhook: unknown order_id', orderId, event);
+      if (success) return res.status(500).json({ error: 'order_not_found_retry' });
+      return res.json({ ok: true, ignored: true, reason: 'order_not_found' });
     }
 
     if (success) {
       const payMethod = mobileMoneyMethodLabel(detectTzMobileNetwork(tx.phone));
       try {
-        await withDbRetry(() =>
+        const granted = await withDbRetry(() =>
           grantPremiumFromPayment({
             deviceId: tx.deviceId,
             userName: tx.userName || 'Mtumiaji',
@@ -377,18 +443,25 @@ router.post(
             planName: tx.planName,
             providerRef: orderId,
             metadata: {
-              source: 'sonicpesa-webhook',
+              source: tx.status === 'completed' ? 'sonicpesa-webhook-repair' : 'sonicpesa-webhook',
               sonicpesa_status: status,
               sonicpesa_event: event,
               transid: transid || undefined,
             },
           })
         );
+        if (!granted.premium_until) {
+          return res.status(500).json({ error: 'premium grant missing until, will retry' });
+        }
       } catch (e) {
         console.error('SonicPesa webhook: grantPremiumFromPayment failed', e);
         return res.status(500).json({ error: 'premium grant failed, will retry' });
       }
       return res.json({ ok: true, completed: true, order_id: orderId });
+    }
+
+    if (tx.status === 'completed') {
+      return res.json({ ok: true, already_completed: true, order_id: orderId });
     }
 
     if (failed) {

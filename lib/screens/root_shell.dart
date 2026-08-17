@@ -31,9 +31,12 @@ class _RootShellState extends State<RootShell> {
     final statusTop = MediaQuery.viewPaddingOf(context).top;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.white,
+        statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
       ),
       child: Scaffold(
         backgroundColor: Colors.white,

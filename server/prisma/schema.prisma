@@ -29,7 +29,19 @@ model AdminUser {
 model Setting {
   id              String   @id @default("singleton")
   supportWhatsApp String   @default("255712345678")
-  updatedAt       DateTime @updatedAt
+
+  maintenanceMode    Boolean @default(false)
+  maintenanceMessage String  @default("")
+
+  forceUpdateEnabled Boolean @default(false)
+  /// Android versionCode the viewer must be on (or newer). 0 = ignore code.
+  minCodeVersion     Int     @default(0)
+  /// Android versionName the viewer must be on (or newer), e.g. "11.6.0".
+  minAppVersion      String  @default("")
+  forceUpdateMessage String  @default("")
+  playStoreUrl       String  @default("https://play.google.com/store/apps/details?id=com.ghettodevelopers.leotena")
+
+  updatedAt DateTime @updatedAt
 }
 
 model Channel {

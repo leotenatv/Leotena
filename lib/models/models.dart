@@ -20,6 +20,79 @@ const kCategoryLabels = <String, String>{
   'burudani': 'Burudani',
 };
 
+const kDefaultPlayStoreUrl =
+    'https://play.google.com/store/apps/details?id=com.ghettodevelopers.leotena';
+
+const kDefaultMaintenanceMessage =
+    'Programu iko katika matengenezo. Tafadhali rudi baadaye.';
+
+const kDefaultForceUpdateMessage =
+    'Toleo jipya la Leotena lipo. Tafadhali sasisha ili uendelee kutumia programu.';
+
+/// Compare dotted version names like "11.5.6" vs "11.6.0". Negative if [a] < [b].
+int compareAppVersions(String a, String b) {
+  int part(String s) => int.tryParse(s.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+  final pa = a.split('.').map(part).toList();
+  final pb = b.split('.').map(part).toList();
+  final len = pa.length > pb.length ? pa.length : pb.length;
+  for (var i = 0; i < len; i++) {
+    final x = i < pa.length ? pa[i] : 0;
+    final y = i < pb.length ? pb[i] : 0;
+    if (x != y) return x.compareTo(y);
+  }
+  return 0;
+}
+
+class AppSettings {
+  final String supportWhatsApp;
+  final bool maintenanceMode;
+  final String maintenanceMessage;
+  final bool forceUpdateEnabled;
+  final int minCodeVersion;
+  final String minAppVersion;
+  final String forceUpdateMessage;
+  final String playStoreUrl;
+
+  const AppSettings({
+    this.supportWhatsApp = '255712345678',
+    this.maintenanceMode = false,
+    this.maintenanceMessage = '',
+    this.forceUpdateEnabled = false,
+    this.minCodeVersion = 0,
+    this.minAppVersion = '',
+    this.forceUpdateMessage = '',
+    this.playStoreUrl = kDefaultPlayStoreUrl,
+  });
+
+  String get displayMaintenanceMessage =>
+      maintenanceMessage.trim().isEmpty ? kDefaultMaintenanceMessage : maintenanceMessage.trim();
+
+  String get displayForceUpdateMessage =>
+      forceUpdateMessage.trim().isEmpty ? kDefaultForceUpdateMessage : forceUpdateMessage.trim();
+
+  String get storeUrl => playStoreUrl.trim().isEmpty ? kDefaultPlayStoreUrl : playStoreUrl.trim();
+
+  bool updateRequired({required String currentVersion, required int currentBuild}) {
+    if (!forceUpdateEnabled) return false;
+    if (minCodeVersion > 0 && currentBuild > 0) return currentBuild < minCodeVersion;
+    if (minAppVersion.isNotEmpty && currentVersion.isNotEmpty) {
+      return compareAppVersions(currentVersion, minAppVersion) < 0;
+    }
+    return false;
+  }
+
+  factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
+        supportWhatsApp: json['supportWhatsApp'] as String? ?? '255712345678',
+        maintenanceMode: json['maintenanceMode'] as bool? ?? false,
+        maintenanceMessage: json['maintenanceMessage'] as String? ?? '',
+        forceUpdateEnabled: json['forceUpdateEnabled'] as bool? ?? false,
+        minCodeVersion: (json['minCodeVersion'] as num?)?.toInt() ?? 0,
+        minAppVersion: json['minAppVersion'] as String? ?? '',
+        forceUpdateMessage: json['forceUpdateMessage'] as String? ?? '',
+        playStoreUrl: json['playStoreUrl'] as String? ?? kDefaultPlayStoreUrl,
+      );
+}
+
 String initialsOf(String name) {
   final words = name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
   if (words.isEmpty) return '?';

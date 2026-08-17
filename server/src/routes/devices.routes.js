@@ -3,8 +3,13 @@ const prisma = require('../db');
 const { asyncRoute } = require('../middleware/errorHandler');
 const requireAdminAuth = require('../middleware/requireAdminAuth');
 const { serializeDevice } = require('../lib/serialize');
+const { reconcileDevicePremium } = require('../lib/premiumPayment');
 
 const router = express.Router();
+
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
+}
 
 const UNIT_MS = {
   minutes: 60 * 1000,
@@ -33,13 +38,16 @@ router.post(
       update: {},
       create: { deviceId: deviceId.trim(), name: name || '', phone: phone || '' },
     });
-    res.json(serializeDevice(row));
+    await withTimeout(reconcileDevicePremium(row.deviceId), 10000);
+    const fresh = await prisma.device.findUnique({ where: { id: row.id } });
+    res.json(serializeDevice(fresh || row));
   })
 );
 
 router.get(
   '/devices/:deviceId',
   asyncRoute(async (req, res) => {
+    await withTimeout(reconcileDevicePremium(req.params.deviceId), 10000);
     const row = await prisma.device.findUnique({ where: { deviceId: req.params.deviceId } });
     if (!row) return res.status(404).json({ error: 'Device not found' });
     res.json(serializeDevice(row));

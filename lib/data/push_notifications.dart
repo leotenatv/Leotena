@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -20,9 +21,15 @@ final _localNotifications = FlutterLocalNotificationsPlugin();
 /// Must be a top-level (or static) function, invoked in its own isolate when
 /// a push arrives while the app is backgrounded/terminated. FCM already
 /// renders the system-tray notification for these automatically — this hook
-/// exists for future data-message handling, not display.
+/// exists so the background isolate has Firebase ready, not for custom UI.
 @pragma('vm:entry-point')
-Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await Firebase.initializeApp();
+  } catch (_) {
+    // Isolate without google-services / Play services — nothing to display.
+  }
+}
 
 /// Creates the Android notification channel and readies the local-display
 /// plugin used for foreground pushes (FCM does not auto-display those).
@@ -36,6 +43,8 @@ Future<void> setupLocalNotifications() async {
 
   await _localNotifications.initialize(
     const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
+    // Tap just resumes MainActivity (singleTop) → splash/home as a normal launch.
+    onDidReceiveNotificationResponse: (_) {},
   );
 
   // iOS / macOS: show banner + sound even while app is in foreground.
@@ -44,6 +53,15 @@ Future<void> setupLocalNotifications() async {
     badge: true,
     sound: true,
   );
+}
+
+/// Cold-start and background-tap: do not route to a special screen. The
+/// existing splash → AppGate → home path already runs.
+Future<void> attachNotificationOpenHandlers() async {
+  FirebaseMessaging.onMessageOpenedApp.listen((_) {});
+  try {
+    await FirebaseMessaging.instance.getInitialMessage();
+  } catch (_) {}
 }
 
 /// Asks for alert + sound (not silent/provisional) and returns the FCM token.
@@ -63,15 +81,30 @@ Future<String?> requestPushPermissionAndToken() async {
   return FirebaseMessaging.instance.getToken();
 }
 
+String? _titleOf(RemoteMessage message) {
+  final fromNotification = message.notification?.title?.trim();
+  if (fromNotification != null && fromNotification.isNotEmpty) return fromNotification;
+  final fromData = (message.data['title'] ?? '').toString().trim();
+  return fromData.isEmpty ? null : fromData;
+}
+
+String? _bodyOf(RemoteMessage message) {
+  final fromNotification = message.notification?.body?.trim();
+  if (fromNotification != null && fromNotification.isNotEmpty) return fromNotification;
+  final fromData = (message.data['body'] ?? message.data['message'] ?? '').toString().trim();
+  return fromData.isEmpty ? null : fromData;
+}
+
 /// Shows a system-tray notification for a push received while the app is in
 /// the foreground (FCM only auto-displays background/terminated pushes).
 void showForegroundNotification(RemoteMessage message) {
-  final notification = message.notification;
-  if (notification == null) return;
+  final title = _titleOf(message);
+  final body = _bodyOf(message);
+  if (title == null && body == null) return;
   _localNotifications.show(
-    notification.hashCode,
-    notification.title,
-    notification.body,
+    message.messageId?.hashCode ?? message.hashCode,
+    title ?? 'Leotena',
+    body ?? '',
     NotificationDetails(
       android: AndroidNotificationDetails(
         _androidChannel.id,

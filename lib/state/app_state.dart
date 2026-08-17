@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../data/api_client.dart';
@@ -26,6 +27,7 @@ class AppState extends ChangeNotifier {
   /// Silent background refresh so admin changes show up without a restart.
   static const _autoRefreshInterval = Duration(seconds: 30);
   Timer? _autoRefreshTimer;
+  StreamSubscription<String>? _fcmTokenSub;
   bool _refreshing = false;
 
   // ---- Account ----
@@ -36,7 +38,9 @@ class AppState extends ChangeNotifier {
   String? _deviceId;
 
   /// Support WhatsApp number (digits with country code). Fetched at boot.
-  String _supportWhatsApp = '255712345678';
+  AppSettings _appSettings = const AppSettings();
+  String _currentVersion = '';
+  int _currentBuild = 0;
 
   List<SubscriptionPackage> _packages = [];
   SubscriptionPackage? _pendingPackage;
@@ -58,7 +62,13 @@ class AppState extends ChangeNotifier {
   DateTime get subEnd => _subEnd;
   String get userName => _userName;
   String get phoneNumber => _phoneNumber;
-  String get supportWhatsApp => _supportWhatsApp;
+  String get supportWhatsApp => _appSettings.supportWhatsApp;
+  AppSettings get appSettings => _appSettings;
+  bool get maintenanceMode => _appSettings.maintenanceMode;
+  bool get forceUpdateRequired =>
+      _appSettings.updateRequired(currentVersion: _currentVersion, currentBuild: _currentBuild);
+  String get currentAppVersion => _currentVersion;
+  int get currentAppBuild => _currentBuild;
   List<SubscriptionPackage> get packages => List.unmodifiable(_packages);
   SubscriptionPackage? get pendingPackage => _pendingPackage;
   bool get awaitingPaymentConfirmation => _awaitingPaymentConfirmation;
@@ -118,10 +128,13 @@ class AppState extends ChangeNotifier {
     contentError = null;
     notifyListeners();
     try {
+      await _loadPackageInfo();
       await _loadContent();
       _startAutoRefresh();
     } on ApiException catch (e) {
       contentError = e.message;
+    } catch (_) {
+      contentError = 'Imeshindwa kuunganisha na seva. Angalia mtandao kisha jaribu tena.';
     } finally {
       loadingContent = false;
       notifyListeners();
@@ -136,8 +149,8 @@ class AppState extends ChangeNotifier {
     try {
       await _loadContent();
       await refreshDeviceStatus();
-    } on ApiException {
-      // Keep last known content on transient failures.
+    } catch (_) {
+      // Keep last known content on transient DNS / network failures.
     } finally {
       _refreshing = false;
       notifyListeners();
@@ -150,7 +163,7 @@ class AppState extends ChangeNotifier {
       _repo.fetchCarousel(),
       _repo.fetchSchedule(),
       _repo.fetchPackages(),
-      _repo.fetchSupportWhatsApp(),
+      _repo.fetchSettings(),
     ]);
     final content = results[0] as ContentResult;
     _channels = content.channels;
@@ -159,7 +172,17 @@ class AppState extends ChangeNotifier {
     _schedule = results[2] as List<ScheduleItem>;
     final pkgs = results[3] as List<SubscriptionPackage>;
     if (pkgs.isNotEmpty) _packages = pkgs;
-    _supportWhatsApp = results[4] as String;
+    _appSettings = results[4] as AppSettings;
+  }
+
+  Future<void> _loadPackageInfo() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _currentVersion = info.version;
+      _currentBuild = int.tryParse(info.buildNumber) ?? 0;
+    } catch (_) {
+      // Web / missing plugin — version gates fall back to app version string only.
+    }
   }
 
   void _startAutoRefresh() {
@@ -172,6 +195,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    _fcmTokenSub?.cancel();
     super.dispose();
   }
 
@@ -191,6 +215,8 @@ class AppState extends ChangeNotifier {
       _applyDeviceStatus(res);
     } catch (_) {
       // Offline/first-run failure is non-fatal — stays on local FREE state.
+      // Skip FCM upload: PUT /devices/:id/fcm-token 404s if register never landed.
+      return;
     }
     unawaited(_registerForPush(id));
   }
@@ -202,7 +228,8 @@ class AppState extends ChangeNotifier {
     try {
       final token = await requestPushPermissionAndToken();
       if (token != null) await _repo.updateFcmToken(id, token);
-      FirebaseMessaging.instance.onTokenRefresh.listen((t) {
+      await _fcmTokenSub?.cancel();
+      _fcmTokenSub = FirebaseMessaging.instance.onTokenRefresh.listen((t) {
         _repo.updateFcmToken(id, t).catchError((_) {});
       });
     } catch (_) {
@@ -226,11 +253,18 @@ class AppState extends ChangeNotifier {
 
   void _applyDeviceStatus(Map<String, dynamic> json) {
     final access = json['hasPremiumAccess'] as bool?;
-    if (access != null) _subscribed = access;
     final premiumUntil = json['premiumUntil'] as String?;
+    DateTime? until;
     if (premiumUntil != null) {
-      final until = DateTime.tryParse(premiumUntil);
+      until = DateTime.tryParse(premiumUntil);
       if (until != null) _subEnd = until;
+    }
+    if (access != null) {
+      _subscribed = access;
+      // Lifetime / repaired premium without an expiry must not be locked by a stale _subEnd.
+      if (access && until == null && !_subEnd.isAfter(DateTime.now())) {
+        _subEnd = DateTime.now().add(const Duration(days: 3650));
+      }
     }
     // Expired entitlement must not keep channels unlocked.
     if (_subscribed && !_subEnd.isAfter(DateTime.now())) {

@@ -17,14 +17,14 @@ class AdminApiRepository {
   Future<void> me() => client.get('/auth/me');
 
   // ── Settings ─────────────────────────────────────────────
-  Future<String> getSettings() async {
+  Future<AdminSettings> getSettings() async {
     final res = await client.get('/settings');
-    return res['supportWhatsApp'] as String;
+    return AdminSettings.fromJson(res as Map<String, dynamic>);
   }
 
-  Future<String> updateSettings(String supportWhatsApp) async {
-    final res = await client.put('/admin/settings', body: {'supportWhatsApp': supportWhatsApp});
-    return res['supportWhatsApp'] as String;
+  Future<AdminSettings> updateSettings(AdminSettings settings) async {
+    final res = await client.put('/admin/settings', body: settings.toJson());
+    return AdminSettings.fromJson(res as Map<String, dynamic>);
   }
 
   // ── Channels ─────────────────────────────────────────────
