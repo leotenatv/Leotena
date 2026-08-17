@@ -43,6 +43,12 @@ int compareAppVersions(String a, String b) {
   return 0;
 }
 
+bool jsonBool(dynamic v, [bool fallback = false]) {
+  if (v == true || v == 1 || v == 'true' || v == '1') return true;
+  if (v == false || v == 0 || v == 'false' || v == '0') return false;
+  return fallback;
+}
+
 class AppSettings {
   final String supportWhatsApp;
   final bool maintenanceMode;
@@ -74,19 +80,29 @@ class AppSettings {
 
   bool updateRequired({required String currentVersion, required int currentBuild}) {
     if (!forceUpdateEnabled) return false;
-    if (minCodeVersion > 0 && currentBuild > 0) return currentBuild < minCodeVersion;
-    if (minAppVersion.isNotEmpty && currentVersion.isNotEmpty) {
-      return compareAppVersions(currentVersion, minAppVersion) < 0;
+    final hasCodeFloor = minCodeVersion > 0;
+    final hasNameFloor = minAppVersion.trim().isNotEmpty;
+    if (!hasCodeFloor && !hasNameFloor) return false;
+    var tooOld = false;
+    if (hasCodeFloor) {
+      // Unknown build while a floor is set → block (cannot prove this install is current).
+      tooOld = currentBuild <= 0 || currentBuild < minCodeVersion;
     }
-    return false;
+    if (hasNameFloor) {
+      final name = currentVersion.trim();
+      if (name.isEmpty || compareAppVersions(name, minAppVersion.trim()) < 0) tooOld = true;
+    }
+    return tooOld;
   }
 
   factory AppSettings.fromJson(Map<String, dynamic> json) => AppSettings(
         supportWhatsApp: json['supportWhatsApp'] as String? ?? '255712345678',
-        maintenanceMode: json['maintenanceMode'] as bool? ?? false,
+        maintenanceMode: jsonBool(json['maintenanceMode']),
         maintenanceMessage: json['maintenanceMessage'] as String? ?? '',
-        forceUpdateEnabled: json['forceUpdateEnabled'] as bool? ?? false,
-        minCodeVersion: (json['minCodeVersion'] as num?)?.toInt() ?? 0,
+        forceUpdateEnabled: jsonBool(json['forceUpdateEnabled']),
+        minCodeVersion: (json['minCodeVersion'] as num?)?.toInt() ??
+            int.tryParse('${json['minCodeVersion'] ?? ''}') ??
+            0,
         minAppVersion: json['minAppVersion'] as String? ?? '',
         forceUpdateMessage: json['forceUpdateMessage'] as String? ?? '',
         playStoreUrl: json['playStoreUrl'] as String? ?? kDefaultPlayStoreUrl,

@@ -24,6 +24,7 @@ router.get(
   '/settings',
   asyncRoute(async (req, res) => {
     const settings = await getOrCreateSettings();
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json(serializeSettings(settings));
   })
 );

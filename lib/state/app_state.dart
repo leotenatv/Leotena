@@ -158,12 +158,16 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _loadContent() async {
+    try {
+      _appSettings = await _repo.fetchSettings();
+    } catch (_) {
+      // Keep last known settings so a blip cannot drop an active gate.
+    }
     final results = await Future.wait([
       _repo.fetchChannelsAndMovies(),
       _repo.fetchCarousel(),
       _repo.fetchSchedule(),
       _repo.fetchPackages(),
-      _repo.fetchSettings(),
     ]);
     final content = results[0] as ContentResult;
     _channels = content.channels;
@@ -172,7 +176,6 @@ class AppState extends ChangeNotifier {
     _schedule = results[2] as List<ScheduleItem>;
     final pkgs = results[3] as List<SubscriptionPackage>;
     if (pkgs.isNotEmpty) _packages = pkgs;
-    _appSettings = results[4] as AppSettings;
   }
 
   Future<void> _loadPackageInfo() async {

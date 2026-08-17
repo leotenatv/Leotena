@@ -37,6 +37,14 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     final minDelay = Future<void>.delayed(const Duration(milliseconds: 2400));
     await Future.wait([state.bootstrap(), state.ensureDeviceRegistered(), minDelay]);
     if (!mounted) return;
+    // Maintenance / force-update must still open even if channels failed to load.
+    if (state.forceUpdateRequired || state.maintenanceMode) {
+      Navigator.of(context).pushReplacement(PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 500),
+        pageBuilder: (_, a, __) => FadeTransition(opacity: a, child: const AppGate()),
+      ));
+      return;
+    }
     if (state.contentError != null) {
       setState(() => _failed = true);
       return;

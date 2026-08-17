@@ -22,6 +22,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late bool _maintenanceOn;
   late bool _forceUpdateOn;
   bool _saving = false;
+  bool _hydrated = false;
+
+  void _hydrate(AdminSettings s) {
+    _wa.text = s.supportWhatsApp;
+    _maintenanceMsg.text = s.maintenanceMessage;
+    _codeVersion.text = s.minCodeVersion > 0 ? '${s.minCodeVersion}' : '';
+    _appVersion.text = s.minAppVersion;
+    _updateMsg.text = s.forceUpdateMessage;
+    _maintenanceOn = s.maintenanceMode;
+    _forceUpdateOn = s.forceUpdateEnabled;
+  }
 
   @override
   void initState() {
@@ -174,6 +185,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final admin = context.watch<AdminState>();
+    if (admin.settingsReady && !_hydrated) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _hydrated) return;
+        _hydrate(admin.settings);
+        setState(() => _hydrated = true);
+      });
+    }
+    if (!admin.settingsReady) {
+      return const AdminPage(
+        toolbar: [],
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
     return AdminPage(
       toolbar: [
         Text('Mipangilio', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
@@ -223,7 +248,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             accent: const Color(0xFFFB7185),
             icon: Icons.system_update_alt_rounded,
             title: 'Lazima ku update',
-            subtitle: 'Mtumiaji mwenye toleo la zamani ataona ujumbe na kitufe Update sasa — hawezi kuendelea bila kusasisha.',
+            subtitle:
+                'Toleo la Play sasa ni 11.6.0 (code 55). Weka code KUBWA kuliko hiyo (mfano 56) au app version mpya (mfano 11.6.1). Toleo la sasa au jipya litaendelea; la zamani litalazimishwa kusasisha.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -238,7 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   controller: _codeVersion,
                   keyboardType: TextInputType.number,
                   style: AdminTheme.body(14, color: AdminColors.textPrimary),
-                  decoration: _deco('Code version (mfano 55)'),
+                  decoration: _deco('Code version ya chini inayoruhusiwa (mfano 56, si 55)'),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -258,7 +284,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 18),
           FilledButton(
-            onPressed: _saving ? null : _save,
+            onPressed: (_saving || !_hydrated) ? null : _save,
             style: FilledButton.styleFrom(
               backgroundColor: AdminColors.green,
               padding: const EdgeInsets.symmetric(vertical: 14),

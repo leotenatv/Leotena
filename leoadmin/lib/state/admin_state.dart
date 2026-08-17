@@ -14,6 +14,7 @@ class AdminState extends ChangeNotifier {
   String _userQuery = '';
   String _channelQuery = '';
   AdminSettings _settings = const AdminSettings();
+  bool settingsReady = false;
 
   List<PricingPlan> _pricingPlans = [];
   List<AdminChannel> _channels = [];
@@ -178,6 +179,9 @@ class AdminState extends ChangeNotifier {
       _settings = await _repo.getSettings();
     } catch (_) {
       // keep the previous/default value
+    } finally {
+      settingsReady = true;
+      notifyListeners();
     }
   }
 

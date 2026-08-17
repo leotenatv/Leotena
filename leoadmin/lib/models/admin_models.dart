@@ -66,10 +66,13 @@ class AdminSettings {
 
   factory AdminSettings.fromJson(Map<String, dynamic> json) => AdminSettings(
         supportWhatsApp: json['supportWhatsApp'] as String? ?? '255712345678',
-        maintenanceMode: json['maintenanceMode'] as bool? ?? false,
+        maintenanceMode: json['maintenanceMode'] == true || json['maintenanceMode'] == 1 || json['maintenanceMode'] == 'true',
         maintenanceMessage: json['maintenanceMessage'] as String? ?? '',
-        forceUpdateEnabled: json['forceUpdateEnabled'] as bool? ?? false,
-        minCodeVersion: (json['minCodeVersion'] as num?)?.toInt() ?? 0,
+        forceUpdateEnabled:
+            json['forceUpdateEnabled'] == true || json['forceUpdateEnabled'] == 1 || json['forceUpdateEnabled'] == 'true',
+        minCodeVersion: (json['minCodeVersion'] as num?)?.toInt() ??
+            int.tryParse('${json['minCodeVersion'] ?? ''}') ??
+            0,
         minAppVersion: json['minAppVersion'] as String? ?? '',
         forceUpdateMessage: json['forceUpdateMessage'] as String? ?? '',
         playStoreUrl: json['playStoreUrl'] as String? ??
