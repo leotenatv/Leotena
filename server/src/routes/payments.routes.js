@@ -272,6 +272,24 @@ router.post(
 
     const remote = await sonicpesaOrderStatus(orderId);
     if (!remote.ok) {
+      const rateLimited =
+        remote.rate_limited ||
+        String(remote.error || '')
+          .toLowerCase()
+          .includes('too many');
+      if (rateLimited) {
+        // Soft: keep the client waiting without treating rate limits as hard failures.
+        return res.json({
+          ok: true,
+          paymentStatus: 'PENDING',
+          payment_status: 'PENDING',
+          completed: false,
+          failed: false,
+          pending: true,
+          rate_limited: true,
+          message: 'Tunasubiri uthibitisho wa malipo…',
+        });
+      }
       const unreachable =
         remote.error?.toLowerCase().includes('unreachable') ||
         remote.error?.toLowerCase().includes('timed out');

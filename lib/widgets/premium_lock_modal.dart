@@ -161,9 +161,10 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
         _waitingHint = init.message.isNotEmpty ? init.message : PaymentConfig.paymentPromptFor(phone);
       });
 
-      const maxAttempts = 90;
+      const maxAttempts = 60;
       for (var i = 0; i < maxAttempts; i++) {
-        final delay = i < 20 ? const Duration(seconds: 1) : const Duration(seconds: 2);
+        // Slower polling avoids Sonic "Too Many Attempts" which blocked auto-upgrade.
+        final delay = i < 10 ? const Duration(seconds: 2) : const Duration(seconds: 4);
         await Future.delayed(delay);
         if (!mounted || _page != 3 || _paymentSuccess) return;
 
@@ -190,10 +191,11 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
           }
         } on SonicpesaPaymentException catch (e) {
           final code = e.statusCode;
-          if (code == 502 || code == 503 || code == 504) {
+          if (code == 429 || code == 502 || code == 503 || code == 504) {
             if (mounted) {
               setState(() => _waitingHint = 'Seva inaendelea kuchakata malipo…');
             }
+            await Future.delayed(const Duration(seconds: 5));
             continue;
           }
           // Soft: keep waiting instead of hard-failing transient issues.

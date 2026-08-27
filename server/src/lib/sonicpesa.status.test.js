@@ -44,6 +44,15 @@ const cases = [
     raw: { status: 'success' },
     expect: 'PENDING',
   },
+  {
+    name: 'transaction.status SUCCESS when data omits payment_status',
+    raw: {
+      status: 'success',
+      data: { order_id: 'sp_1', amount: 2000 },
+      transaction: { order_id: 'sp_1', status: 'SUCCESS', amount: '2000.00' },
+    },
+    expect: 'SUCCESS',
+  },
 ];
 
 for (const c of cases) {
@@ -55,5 +64,6 @@ assert(isSonicpesaSuccess(readPaymentStatus(cases[0].raw)), 'success detected');
 assert(isSonicpesaFailure(readPaymentStatus(cases[4].raw)), 'failure detected');
 assert(isSonicpesaSuccess('SUCCESSFUL'), 'SUCCESSFUL is paid');
 assert(isSonicpesaSuccess('SETTLED'), 'SETTLED is paid');
+assert(isSonicpesaSuccess(readPaymentStatus(cases[cases.length - 1].raw)), 'transaction.status success');
 
 console.log(`ok — ${cases.length} sonicpesa status cases passed`);

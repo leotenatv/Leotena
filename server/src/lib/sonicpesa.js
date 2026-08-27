@@ -14,8 +14,18 @@ function sonicHeaders() {
     process.env.SONICPESA_API_SECRET ||
     process.env.SONICPESA_SECRETE_KEY ||
     '';
+  // Sonic dashboard / error text: some accounts expect X-SECRET-KEY.
   if (secret.trim()) h['X-SECRET-KEY'] = secret.trim();
   return h;
+}
+
+/** Short cache so aggressive app polling does not burn Sonic rate limits. */
+const ORDER_STATUS_CACHE_TTL_MS = 6_000;
+const _orderStatusCache = new Map();
+
+function isSonicpesaRateLimited(errorOrMessage) {
+  const s = String(errorOrMessage || '').toLowerCase();
+  return s.includes('too many attempts') || s.includes('too many requests') || s.includes('rate limit');
 }
 
 function sonicpesaConfigured() {
@@ -152,6 +162,7 @@ function readBuyerPhone(body) {
  */
 function readPaymentStatus(raw) {
   const fromData = asRecord(raw.data);
+  const fromTxn = asRecord(raw.transaction);
   const fromOsd = asRecord(fromData?.order_status_data ?? raw.order_status_data);
   const body = unwrapSonicpesaBody(raw);
 
@@ -160,6 +171,8 @@ function readPaymentStatus(raw) {
     body.order_status,
     body.transaction_status,
     body.txn_status,
+    fromTxn?.payment_status,
+    fromTxn?.status,
     fromOsd?.payment_status,
     fromOsd?.order_status,
     fromData?.payment_status,
@@ -185,7 +198,8 @@ function readPaymentStatus(raw) {
         body.reference ||
         body.buyer_phone ||
         body.buyerPhone ||
-        fromData
+        fromData ||
+        fromTxn
     );
 
     if ((lower === 'success' || lower === 'error') && !hasOrderContext) {
@@ -285,29 +299,49 @@ async function sonicpesaCreateOrder(input) {
 }
 
 async function sonicpesaOrderStatus(orderId) {
-  const posted = await sonicpesaPost('/api/v1/payment/order_status', { order_id: orderId });
-  if (!posted.ok) return { ok: false, error: posted.error };
+  const id = String(orderId || '').trim();
+  if (!id) return { ok: false, error: 'order_id is required' };
+
+  const cached = _orderStatusCache.get(id);
+  if (cached && Date.now() - cached.at < ORDER_STATUS_CACHE_TTL_MS) {
+    return { ...cached.value, cached: true };
+  }
+
+  const posted = await sonicpesaPost('/api/v1/payment/order_status', { order_id: id });
+  if (!posted.ok) {
+    return { ok: false, error: posted.error, rate_limited: isSonicpesaRateLimited(posted.error) };
+  }
 
   const { res, raw } = posted;
   const apiError = sonicpesaApiError(raw, res.status);
   if (!res.ok) {
-    return { ok: false, error: apiError || `SonicPesa HTTP ${res.status}`, raw };
+    const err = apiError || `SonicPesa HTTP ${res.status}`;
+    return { ok: false, error: err, rate_limited: isSonicpesaRateLimited(err) || res.status === 429, raw };
   }
-  if (apiError) return { ok: false, error: apiError, raw };
+  if (apiError) {
+    return { ok: false, error: apiError, rate_limited: isSonicpesaRateLimited(apiError), raw };
+  }
 
   const body = unwrapSonicpesaBody(raw);
   const paymentStatus = readPaymentStatus(raw);
-  return {
+  const value = {
     ok: true,
-    order_id: readOrderId(body) || orderId,
+    order_id: readOrderId(body) || id,
     payment_status: paymentStatus,
     status: paymentStatus,
     reference: String(body.reference ?? '').trim() || undefined,
     amount: body.amount != null ? Number(body.amount) : undefined,
     currency: body.currency != null ? String(body.currency) : undefined,
-    buyer_phone: readBuyerPhone(body) || undefined,
+    buyer_phone: readBuyerPhone(body) || readBuyerPhone(asRecord(raw.transaction) || {}) || undefined,
     raw,
   };
+  _orderStatusCache.set(id, { at: Date.now(), value });
+  // Bound cache size (aggressive multi-device polling).
+  if (_orderStatusCache.size > 400) {
+    const first = _orderStatusCache.keys().next().value;
+    if (first) _orderStatusCache.delete(first);
+  }
+  return value;
 }
 
 module.exports = {
@@ -317,6 +351,7 @@ module.exports = {
   normalizePaymentStatus,
   isSonicpesaSuccess,
   isSonicpesaFailure,
+  isSonicpesaRateLimited,
   readPaymentStatus,
   readWebhookPaymentFields,
   sonicpesaCreateOrder,

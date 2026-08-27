@@ -209,9 +209,10 @@ class _PaymentSheetState extends State<PaymentSheet> {
 
       setState(() => _error = init.message);
 
-      const maxAttempts = 90;
+      const maxAttempts = 60;
       for (var i = 0; i < maxAttempts; i++) {
-        final delay = i < 20 ? const Duration(seconds: 1) : const Duration(seconds: 2);
+        // Slower polling avoids Sonic "Too Many Attempts" which blocked auto-upgrade.
+        final delay = i < 10 ? const Duration(seconds: 2) : const Duration(seconds: 4);
         await Future.delayed(delay);
         if (!mounted) return;
 
@@ -239,8 +240,15 @@ class _PaymentSheetState extends State<PaymentSheet> {
             });
             return;
           }
-        } on SonicpesaPaymentException {
-          // Soft: keep polling through transient issues.
+        } on SonicpesaPaymentException catch (e) {
+          final code = e.statusCode;
+          if (code == 429 || code == 502 || code == 503 || code == 504) {
+            if (mounted) {
+              setState(() => _error = 'Seva inaendelea kuchakata malipo…');
+            }
+            await Future.delayed(const Duration(seconds: 5));
+          }
+          // Soft: keep polling through other transient issues.
         }
         if (!mounted) return;
         setState(() {

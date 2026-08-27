@@ -6,9 +6,17 @@ const {
   normalizePaymentStatus,
   isSonicpesaSuccess,
   isSonicpesaFailure,
+  isSonicpesaRateLimited,
   sonicpesaOrderStatus,
 } = require('./sonicpesa');
 const { hasPremiumAccess } = require('./serialize');
+
+/** USSD push windows are short; abandoned rows must leave the poll queue. */
+const PENDING_ACTIVE_MS = 45 * 60 * 1000;
+/** Still try to settle paid-but-stuck rows for this long before hard-expire. */
+const PENDING_REPAIR_MS = 14 * 24 * 60 * 60 * 1000;
+const SWEEP_BATCH = 8;
+const SWEEP_GAP_MS = 500;
 
 async function withDbRetry(fn, attempts = 3, delayMs = 400) {
   let lastErr;
@@ -319,31 +327,56 @@ async function grantFromTx(tx, source) {
   });
 }
 
-async function settlePendingTxFromSonicpesa(tx, source) {
+/**
+ * Settle one pending row against SonicPesa.
+ * @returns {{ granted?: object, rate_limited?: boolean, expired?: boolean, failed?: boolean }}
+ */
+async function settlePendingTxFromSonicpesa(tx, source, { expireIfStillPending = false } = {}) {
   const remote = await sonicpesaOrderStatus(tx.orderId);
-  if (!remote.ok) return null;
+  if (!remote.ok) {
+    if (remote.rate_limited || isSonicpesaRateLimited(remote.error)) {
+      return { rate_limited: true };
+    }
+    return {};
+  }
   const status = normalizePaymentStatus(remote.payment_status ?? remote.status ?? 'PENDING');
   if (isSonicpesaFailure(status)) {
     await markPaymentFailed(tx.orderId, { sonicpesa_status: status, closed_at: source });
-    return null;
+    return { failed: true };
   }
-  if (!isSonicpesaSuccess(status)) return null;
-  return grantPremiumFromPayment({
-    deviceId: tx.deviceId,
-    userName: tx.userName || 'Mtumiaji',
-    phone: tx.phone || '',
-    amount: Number(tx.amount) || Number(remote.amount ?? 0),
-    method: tx.method || 'Mobile Money',
-    planId: tx.planId,
-    planName: tx.planName,
-    providerRef: tx.orderId,
-    metadata: { source, sonicpesa_status: status },
-  });
+  if (isSonicpesaSuccess(status)) {
+    const granted = await grantPremiumFromPayment({
+      deviceId: tx.deviceId,
+      userName: tx.userName || 'Mtumiaji',
+      phone: tx.phone || '',
+      amount: Number(tx.amount) || Number(remote.amount ?? 0),
+      method: tx.method || 'Mobile Money',
+      planId: tx.planId,
+      planName: tx.planName,
+      providerRef: tx.orderId,
+      metadata: {
+        source,
+        sonicpesa_status: status,
+        reference: remote.reference || undefined,
+      },
+    });
+    return { granted };
+  }
+  if (expireIfStillPending) {
+    await markPaymentFailed(tx.orderId, {
+      sonicpesa_status: status || 'PENDING',
+      closed_at: source,
+      reason: 'stale_pending_expired',
+    });
+    return { expired: true };
+  }
+  return {};
 }
 
 /**
  * If this device paid but never received premium (missed webhook / poll), grant now.
- * Cheap no-op when the account is already premium.
+ * Cheap no-op when the account is already premium — still settles recent pending
+ * SUCCESS rows so Malipo history stays accurate.
  */
 async function reconcileDevicePremium(deviceId) {
   const id = String(deviceId || '').trim();
@@ -351,14 +384,13 @@ async function reconcileDevicePremium(deviceId) {
 
   try {
     const device = await prisma.device.findUnique({ where: { deviceId: id } });
-    if (device && hasPremiumAccess(device)) return device.premiumUntil ? device.premiumUntil.toISOString() : null;
-
-    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const alreadyPremium = device && hasPremiumAccess(device);
+    const since = new Date(Date.now() - PENDING_REPAIR_MS);
 
     const stuck = await prisma.paymentTransaction.findMany({
       where: { deviceId: id, status: 'completed', amount: { gt: 0 } },
       orderBy: { updatedAt: 'desc' },
-      take: 3,
+      take: 5,
     });
     for (const tx of stuck) {
       if (!needsPremiumRepair(tx, device)) continue;
@@ -368,7 +400,9 @@ async function reconcileDevicePremium(deviceId) {
       }
     }
 
-    if (!sonicpesaConfigured()) return null;
+    if (!sonicpesaConfigured()) {
+      return alreadyPremium && device.premiumUntil ? device.premiumUntil.toISOString() : null;
+    }
 
     const pending = await prisma.paymentTransaction.findMany({
       where: {
@@ -378,18 +412,26 @@ async function reconcileDevicePremium(deviceId) {
         createdAt: { gt: since },
       },
       orderBy: { createdAt: 'desc' },
-      take: 2,
+      take: 6,
     });
     for (const tx of pending) {
       try {
-        const granted = await withDbRetry(() => settlePendingTxFromSonicpesa(tx, 'device-reconcile'));
-        if (granted?.premium_until && Date.parse(granted.premium_until) > Date.now()) {
-          return granted.premium_until;
+        const ageMs = Date.now() - new Date(tx.createdAt).getTime();
+        const result = await withDbRetry(() =>
+          settlePendingTxFromSonicpesa(tx, 'device-reconcile', {
+            expireIfStillPending: ageMs > PENDING_ACTIVE_MS,
+          })
+        );
+        if (result?.rate_limited) break;
+        if (result?.granted?.premium_until && Date.parse(result.granted.premium_until) > Date.now()) {
+          return result.granted.premium_until;
         }
       } catch (e) {
         console.warn('reconcile pending payment failed', tx.orderId, e.message || e);
       }
     }
+
+    if (alreadyPremium && device.premiumUntil) return device.premiumUntil.toISOString();
   } catch (e) {
     console.warn('reconcileDevicePremium failed', id, e.message || e);
   }
@@ -398,25 +440,55 @@ async function reconcileDevicePremium(deviceId) {
 
 const _sweepInFlight = new Set();
 let _sweepTimer = null;
+let _sweepBackoffUntil = 0;
 
 async function sweepPendingSonicpesaPayments() {
   if (!sonicpesaConfigured()) return;
-  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const pending = await prisma.paymentTransaction.findMany({
-    where: { status: 'pending', amount: { gt: 0 }, createdAt: { gt: since } },
-    orderBy: { createdAt: 'desc' },
-    take: 30,
+  if (Date.now() < _sweepBackoffUntil) return;
+
+  const now = Date.now();
+  const activeSince = new Date(now - PENDING_ACTIVE_MS);
+  const repairSince = new Date(now - PENDING_REPAIR_MS);
+
+  // 1) Active USSD window first — users waiting in the app.
+  const active = await prisma.paymentTransaction.findMany({
+    where: { status: 'pending', amount: { gt: 0 }, createdAt: { gt: activeSince } },
+    orderBy: { createdAt: 'asc' },
+    take: SWEEP_BATCH,
   });
-  for (const tx of pending) {
+
+  // 2) Older pending that may already be SUCCESS on Sonic (admin used to fix these).
+  const stale = await prisma.paymentTransaction.findMany({
+    where: {
+      status: 'pending',
+      amount: { gt: 0 },
+      createdAt: { gt: repairSince, lte: activeSince },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: Math.max(2, SWEEP_BATCH - active.length),
+  });
+
+  const queue = [...active, ...stale];
+  for (const tx of queue) {
     if (_sweepInFlight.has(tx.orderId)) continue;
     _sweepInFlight.add(tx.orderId);
     try {
-      await settlePendingTxFromSonicpesa(tx, 'pending-sweeper');
+      const ageMs = now - new Date(tx.createdAt).getTime();
+      const result = await settlePendingTxFromSonicpesa(tx, 'pending-sweeper', {
+        expireIfStillPending: ageMs > PENDING_ACTIVE_MS,
+      });
+      if (result?.rate_limited) {
+        // Back off so we do not keep burning the Sonic quota with abandoned pendings.
+        _sweepBackoffUntil = Date.now() + 90_000;
+        console.warn('payment sweeper: Sonic rate limited — backing off 90s');
+        break;
+      }
     } catch (e) {
       console.error('pending payment sweep failed', tx.orderId, e);
     } finally {
       _sweepInFlight.delete(tx.orderId);
     }
+    await new Promise((r) => setTimeout(r, SWEEP_GAP_MS));
   }
 }
 
@@ -425,8 +497,8 @@ function startPendingPaymentSweeper() {
   const tick = () => {
     sweepPendingSonicpesaPayments().catch((e) => console.error('payment sweeper', e));
   };
-  setTimeout(tick, 12_000);
-  _sweepTimer = setInterval(tick, 60_000);
+  setTimeout(tick, 8_000);
+  _sweepTimer = setInterval(tick, 45_000);
   if (typeof _sweepTimer.unref === 'function') _sweepTimer.unref();
 }
 
