@@ -29,7 +29,7 @@ const {
   findDeviceIdByPhone,
   resolvePlanByAmount,
 } = require('../lib/premiumPayment');
-const { serializeDevice } = require('../lib/serialize');
+const { serializeDevice, hasPremiumAccess } = require('../lib/serialize');
 
 const router = express.Router();
 
@@ -82,7 +82,7 @@ router.post(
     if (!buyerPhone || !localPhone) {
       return res.status(400).json({
         error:
-          'Namba ya simu si sahihi. Tumia 07…, 06… (Halotel 061/062/063/069), tarakimu 9 bila 0, au 255…',
+          'Namba ya simu si sahihi. Tumia 07…, 06… (Halotel 061/062/063), tarakimu 9 bila 0, au 255…',
       });
     }
 
@@ -160,9 +160,12 @@ router.post(
       console.error('upsertPendingSonicpesaTransaction failed', dbErr);
       return res.status(502).json({
         error:
-          'Malipo yameanzishwa lakini seva haikuweza kuyahifadhi. Jaribu tena — usirudie malipo kwenye simu ikiwa umepokea ombi.',
+          'Malipo yameanzishwa lakini seva haikuweza kuyahifadhi. Subiri uthibitisho wa malipo kwenye simu.',
         orderId,
         order_id: orderId,
+        planId: plan.id,
+        plan_id: plan.id,
+        recoverable: true,
       });
     }
 
@@ -212,11 +215,51 @@ router.post(
     const b = req.body || {};
     const deviceId = String(b.deviceId || b.device_id || '').trim();
     const orderId = String(b.orderId || b.order_id || '').trim();
+    const planIdHint = String(b.planId || b.plan_id || b.plan_key || '').trim();
     if (!deviceId || !orderId) {
       return res.status(400).json({ error: 'deviceId and orderId are required' });
     }
 
-    const tx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+    let tx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+
+    // Recover initiate-time DB failure: client has orderId but no local row yet.
+    if (!tx && sonicpesaConfigured() && !orderId.startsWith('local-')) {
+      try {
+        const remote = await sonicpesaOrderStatus(orderId);
+        if (remote.ok) {
+          const grantPhone = String(b.phone || remote.buyer_phone || '').trim();
+          const localGrantPhone = toLocalTzPhone(grantPhone) || grantPhone;
+          const amount = Number(remote.amount) || parseAmountTzs(b.amount);
+          const plan =
+            (planIdHint ? await prisma.pricingPlan.findUnique({ where: { id: planIdHint } }) : null) ||
+            (amount > 0 ? await resolvePlanByAmount(amount, planIdHint) : null);
+          if (plan?.active && localGrantPhone) {
+            const payMethod = mobileMoneyMethodLabel(detectTzMobileNetwork(localGrantPhone));
+            await withDbRetry(() =>
+              upsertPendingSonicpesaTransaction({
+                deviceId,
+                userName: String(b.userName || b.user_name || 'Mtumiaji').trim(),
+                phone: localGrantPhone,
+                amount: amount > 0 ? amount : parseAmountTzs(plan.price),
+                planId: plan.id,
+                planName: plan.name,
+                orderId,
+                method: payMethod,
+                metadata: {
+                  source: 'status-poll-recovery',
+                  reference: remote.reference,
+                  planDays: plan.days,
+                },
+              })
+            );
+            tx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+          }
+        }
+      } catch (e) {
+        console.warn('status poll recovery for missing tx failed', orderId, e.message || e);
+      }
+    }
+
     if (!tx) return res.status(404).json({ error: 'payment session not found' });
     if (tx.deviceId !== deviceId) {
       return res.status(403).json({ error: 'device mismatch' });
@@ -243,6 +286,14 @@ router.post(
         }
       }
       const device = await prisma.device.findUnique({ where: { deviceId } });
+      const premiumActive = device && hasPremiumAccess(device);
+      if (tx.status === 'completed' && !orderId.startsWith('local-') && !premiumActive) {
+        return res.status(500).json({
+          error: 'Malipo yamepokelewa lakini ufikiaji wa Premium haujawashwa. Tunajaribu tena…',
+          pending: true,
+          completed: false,
+        });
+      }
       return res.json({
         ok: true,
         paymentStatus: 'SUCCESS',
@@ -332,9 +383,11 @@ router.post(
         });
       } catch (e) {
         console.error('grantPremiumFromPayment failed after SonicPesa success', e);
-        return res
-          .status(500)
-          .json({ error: 'Payment received but premium activation failed. Contact support.' });
+        return res.status(500).json({
+          error: 'Malipo yamepokelewa lakini ufikiaji wa Premium haujawashwa. Tunajaribu tena…',
+          pending: true,
+          completed: false,
+        });
       }
     }
 
@@ -385,6 +438,8 @@ router.post(
       if (headerSecret !== webhookSecret) {
         return res.status(401).json({ error: 'invalid webhook secret' });
       }
+    } else if (process.env.NODE_ENV === 'production') {
+      console.warn('SONICPESA_WEBHOOK_SECRET is not set — webhook endpoint is unauthenticated');
     }
 
     if (!orderId) return res.status(400).json({ error: 'order_id is required' });
@@ -409,7 +464,7 @@ router.post(
         console.warn('SonicPesa webhook: order_status lookup failed for orphan', e);
       }
 
-      const deviceId = buyerPhone ? await findDeviceIdByPhone(buyerPhone) : null;
+      const deviceId = buyerPhone ? await findDeviceIdByPhone(buyerPhone, orderId) : null;
       const plan = amount > 0 ? await resolvePlanByAmount(amount) : null;
       if (!deviceId || !plan) {
         console.warn('SonicPesa webhook: unknown order_id and cannot recover', orderId, {

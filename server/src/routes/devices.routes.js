@@ -35,7 +35,10 @@ router.post(
     }
     const row = await prisma.device.upsert({
       where: { deviceId: deviceId.trim() },
-      update: {},
+      update: {
+        ...(name != null && String(name).trim() ? { name: String(name).trim() } : {}),
+        ...(phone != null && String(phone).trim() ? { phone: String(phone).trim() } : {}),
+      },
       create: { deviceId: deviceId.trim(), name: name || '', phone: phone || '' },
     });
     await withTimeout(reconcileDevicePremium(row.deviceId), 10000);

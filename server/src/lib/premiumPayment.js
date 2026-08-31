@@ -42,6 +42,13 @@ function parseAmountTzs(price) {
  * Upsert a pending SonicPesa payment row after create_order succeeds.
  * Ensures the Device row exists so webhook/status can grant premium later.
  */
+function mergeMetadata(existing, incoming) {
+  const base =
+    existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+  const patch = incoming && typeof incoming === 'object' && !Array.isArray(incoming) ? incoming : {};
+  return { ...base, ...patch };
+}
+
 async function upsertPendingSonicpesaTransaction(input) {
   const deviceId = input.deviceId.trim();
   const userName = (input.userName || '').trim() || 'Mtumiaji';
@@ -61,6 +68,14 @@ async function upsertPendingSonicpesaTransaction(input) {
     },
   });
 
+  const existing = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+  if (existing?.status === 'completed') {
+    return existing;
+  }
+
+  const metadata = mergeMetadata(existing?.metadata, input.metadata);
+  const nextStatus = existing?.status === 'failed' ? 'failed' : 'pending';
+
   return prisma.paymentTransaction.upsert({
     where: { orderId },
     update: {
@@ -71,8 +86,8 @@ async function upsertPendingSonicpesaTransaction(input) {
       planName: input.planName || '',
       amount: input.amount,
       method: input.method || 'Mobile Money',
-      status: 'pending',
-      metadata: input.metadata || undefined,
+      status: nextStatus,
+      metadata,
     },
     create: {
       orderId,
@@ -173,7 +188,7 @@ async function grantPremiumFromPayment(input) {
         userName,
         phone,
         method,
-        metadata: input.metadata || undefined,
+        metadata: mergeMetadata(meta, input.metadata),
       },
       create: {
         orderId,
@@ -211,11 +226,13 @@ async function grantPremiumFromPayment(input) {
 }
 
 async function markPaymentFailed(orderId, metadata) {
-  await prisma.paymentTransaction.updateMany({
-    where: { orderId, status: { not: 'completed' } },
+  const existing = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+  if (!existing || existing.status === 'completed') return;
+  await prisma.paymentTransaction.update({
+    where: { orderId },
     data: {
       status: 'failed',
-      metadata: metadata || undefined,
+      metadata: mergeMetadata(existing.metadata, metadata),
     },
   });
 }
@@ -288,11 +305,28 @@ function localPaymentsAllowed() {
   return flag === '1' || flag === 'true' || flag === 'yes';
 }
 
-async function findDeviceIdByPhone(phoneRaw) {
+async function findDeviceIdByPhone(phoneRaw, orderId) {
+  const oid = String(orderId || '').trim();
+  if (oid) {
+    const byOrder = await prisma.paymentTransaction.findUnique({ where: { orderId: oid } });
+    if (byOrder?.deviceId) return byOrder.deviceId.trim();
+  }
+
   const local = toLocalTzPhone(phoneRaw);
   const intl = normalizeTzPhone(phoneRaw);
   const candidates = [local, intl, local ? local.slice(1) : null].filter(Boolean);
   if (!candidates.length) return null;
+
+  const recentTx = await prisma.paymentTransaction.findFirst({
+    where: {
+      phone: { in: candidates },
+      status: { in: ['pending', 'completed'] },
+      createdAt: { gt: new Date(Date.now() - PENDING_REPAIR_MS) },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  if (recentTx?.deviceId) return recentTx.deviceId.trim();
+
   const row = await prisma.device.findFirst({
     where: { phone: { in: candidates } },
     orderBy: { updatedAt: 'desc' },
@@ -300,17 +334,25 @@ async function findDeviceIdByPhone(phoneRaw) {
   return row?.deviceId?.trim() || null;
 }
 
-async function resolvePlanByAmount(amount) {
+async function resolvePlanByAmount(amount, planIdHint) {
+  const hint = String(planIdHint || '').trim();
+  if (hint) {
+    const hinted = await prisma.pricingPlan.findUnique({ where: { id: hint } });
+    if (hinted?.active) return hinted;
+  }
+
   const amt = Math.round(Number(amount));
   if (!(amt > 0)) return null;
-  const plans = await prisma.pricingPlan.findMany();
+  const plans = await prisma.pricingPlan.findMany({ where: { active: true } });
   const scored = plans
     .map((p) => ({ p, price: parseAmountTzs(p.price), diff: Math.abs(parseAmountTzs(p.price) - amt) }))
     .filter((x) => x.price > 0);
   const exact = scored.find((x) => x.price === amt);
   if (exact) return exact.p;
-  const near = scored.filter((x) => x.diff <= 100).sort((a, b) => a.diff - b.diff || (b.p.active ? 1 : 0) - (a.p.active ? 1 : 0));
-  return near[0]?.p ?? null;
+  const near = scored.filter((x) => x.diff <= 100).sort((a, b) => a.diff - b.diff);
+  if (near.length === 1) return near[0].p;
+  if (near.length > 1 && near[0].diff < near[1].diff) return near[0].p;
+  return null;
 }
 
 async function grantFromTx(tx, source) {
@@ -363,12 +405,8 @@ async function settlePendingTxFromSonicpesa(tx, source, { expireIfStillPending =
     return { granted };
   }
   if (expireIfStillPending) {
-    await markPaymentFailed(tx.orderId, {
-      sonicpesa_status: status || 'PENDING',
-      closed_at: source,
-      reason: 'stale_pending_expired',
-    });
-    return { expired: true };
+    // USSD window elapsed but provider still PENDING — keep row recoverable via webhook.
+    return { stale: true };
   }
   return {};
 }

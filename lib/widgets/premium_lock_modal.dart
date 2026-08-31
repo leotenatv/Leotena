@@ -173,10 +173,17 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
             orderId: init.orderId,
             userName: name,
             phone: phone,
+            planId: pkg.id,
           );
           if (status.completed) {
-            await _markPaymentSuccess();
-            return;
+            if (context.read<AppState>().subscribed) {
+              await _markPaymentSuccess();
+              return;
+            }
+            if (mounted) {
+              setState(() => _waitingHint = 'Tunasubiri kuwasha ufikiaji wa Premium…');
+            }
+            continue;
           }
           if (status.failed) {
             if (!mounted) return;
@@ -191,7 +198,7 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
           }
         } on SonicpesaPaymentException catch (e) {
           final code = e.statusCode;
-          if (code == 429 || code == 502 || code == 503 || code == 504) {
+          if (code == 429 || code == 500 || code == 502 || code == 503 || code == 504) {
             if (mounted) {
               setState(() => _waitingHint = 'Seva inaendelea kuchakata malipo…');
             }

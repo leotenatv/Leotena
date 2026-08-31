@@ -212,35 +212,39 @@ function readPaymentStatus(raw) {
   return 'PENDING';
 }
 
-/** Normalize webhook JSON (top-level or nested `data`). */
+/** Normalize webhook JSON (top-level or nested `data` / `transaction`). */
 function readWebhookPaymentFields(b) {
   const nested = asRecord(b.data);
-  const status = normalizePaymentStatus(
-    b.payment_status ??
-      b.order_status ??
-      nested?.payment_status ??
-      nested?.order_status ??
-      nested?.status ??
-      b.status
-  );
+  const txn = asRecord(b.transaction);
+  const osd = asRecord(nested?.order_status_data ?? b.order_status_data);
+  const body = unwrapSonicpesaBody(b);
+  const status = readPaymentStatus(b);
   return {
     status,
-    event: String(b.event ?? nested?.event ?? '')
+    event: String(b.event ?? nested?.event ?? txn?.event ?? '')
       .trim()
       .toLowerCase(),
-    orderId: String(b.order_id ?? b.orderId ?? nested?.order_id ?? nested?.orderId ?? '').trim(),
-    transid: String(b.transid ?? b.transaction_id ?? nested?.transid ?? '').trim(),
+    orderId: String(
+      body.order_id ?? body.orderId ?? b.order_id ?? b.orderId ?? nested?.order_id ?? nested?.orderId ?? ''
+    ).trim(),
+    transid: String(
+      b.transid ?? b.transaction_id ?? txn?.transid ?? nested?.transid ?? ''
+    ).trim(),
     phone: String(
-      b.buyer_phone ??
+      body.buyer_phone ??
+        body.buyerPhone ??
+        body.phone ??
+        b.buyer_phone ??
         b.buyerPhone ??
         b.phone ??
         b.customer_phone ??
         b.msisdn ??
         nested?.buyer_phone ??
         nested?.phone ??
+        txn?.buyer_phone ??
         ''
     ).trim(),
-    amount: Number(b.amount ?? nested?.amount ?? 0),
+    amount: Number(body.amount ?? b.amount ?? nested?.amount ?? txn?.amount ?? 0),
   };
 }
 

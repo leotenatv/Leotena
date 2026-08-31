@@ -329,19 +329,16 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Mock/manual-confirmation fallback (kept for admin-grant refresh paths).
-  /// Real checkout uses [initiateSonicPayment] + [pollSonicPayment].
+  /// Mock/manual-confirmation fallback — server refresh only; never unlocks alone.
   void confirmPayment() {
-    final pkg = _pendingPackage;
-    if (pkg == null) return;
-    _unlockPremium(fallbackDays: pkg.days);
+    unawaited(refreshDeviceStatus());
   }
 
   void activatePackage(SubscriptionPackage pkg, {required String name, required String phone}) {
     _userName = name.trim().isEmpty ? 'Mtumiaji' : name.trim();
     _phoneNumber = phone.trim();
     _pendingPackage = pkg;
-    _unlockPremium(fallbackDays: pkg.days);
+    unawaited(refreshDeviceStatus());
   }
 
   /// Starts SonicPesa USSD push for [pkg]. Does not unlock premium until
@@ -359,7 +356,7 @@ class AppState extends ChangeNotifier {
     final localPhone = PaymentConfig.normalizeTzLocalPhone(phone);
     if (localPhone == null) {
       throw SonicpesaPaymentException(
-        'Weka namba ya simu sahihi: 07…, 06… (Halotel 061/062/063/069), au 255…',
+        'Weka namba ya simu sahihi: 07…, 06… (Halotel 061/062/063), au 255…',
       );
     }
     if (!PaymentConfig.isValidFullName(trimmedName)) {
@@ -401,6 +398,7 @@ class AppState extends ChangeNotifier {
     required String orderId,
     String? userName,
     String? phone,
+    String? planId,
   }) async {
     final id = _deviceId;
     if (id == null || id.isEmpty) {
@@ -411,6 +409,7 @@ class AppState extends ChangeNotifier {
       orderId: orderId,
       userName: userName ?? _userName,
       phone: phone ?? _phoneNumber,
+      planId: planId ?? _pendingPackage?.id,
     );
     if (status.completed) {
       DateTime? until = status.premiumUntil;
@@ -419,16 +418,15 @@ class AppState extends ChangeNotifier {
         final rawUntil = status.deviceJson!['premiumUntil'] as String?;
         until ??= rawUntil != null ? DateTime.tryParse(rawUntil) : null;
       }
-      // Always force local unlock so channel locks clear immediately, even if
-      // a transient status payload omitted hasPremiumAccess.
-      _unlockPremium(until: until, fallbackDays: _pendingPackage?.days);
-      // Re-fetch server truth so countdown / admin panel stay in sync.
+      final serverConfirmed =
+          status.deviceJson?['hasPremiumAccess'] == true ||
+          (until != null && until.isAfter(DateTime.now()));
+      if (serverConfirmed) {
+        _unlockPremium(until: until, fallbackDays: _pendingPackage?.days);
+      }
       try {
         await refreshDeviceStatus();
       } catch (_) {}
-      if (!subscribed) {
-        _unlockPremium(until: until, fallbackDays: _pendingPackage?.days);
-      }
     }
     return status;
   }

@@ -40,7 +40,20 @@ class SonicpesaPaymentService {
         statusCode: res.statusCode,
       );
     }
+    // Initiate may return 502 when SonicPesa accepted the order but DB write failed — still poll.
     if (res.statusCode == 502) {
+      final partialOrderId =
+          (map['orderId'] as String?)?.trim() ?? (map['order_id'] as String?)?.trim() ?? '';
+      if (partialOrderId.isNotEmpty && map['recoverable'] == true) {
+        return SonicpesaInitiateResult(
+          orderId: partialOrderId,
+          amount: (map['amount'] as num?)?.toInt() ?? 0,
+          message: _userFacingMessage(map, res.statusCode,
+              fallback: 'Malipo yameanzishwa. Thibitisha PIN kwenye simu yako.'),
+          completed: false,
+          local: false,
+        );
+      }
       throw SonicpesaPaymentException(
         _userFacingMessage(map, res.statusCode,
             fallback: 'Malipo yameanzishwa lakini hayajakamilika kwenye programu. Jaribu tena.'),
@@ -82,6 +95,7 @@ class SonicpesaPaymentService {
     required String orderId,
     String? userName,
     String? phone,
+    String? planId,
   }) async {
     final localPhone = phone != null && phone.isNotEmpty
         ? (PaymentConfig.normalizeTzLocalPhone(phone) ?? phone.trim())
@@ -95,11 +109,21 @@ class SonicpesaPaymentService {
             'orderId': orderId,
             if (userName != null && userName.isNotEmpty) 'userName': userName,
             if (localPhone != null && localPhone.isNotEmpty) 'phone': localPhone,
+            if (planId != null && planId.isNotEmpty) 'planId': planId,
           }),
         )
         .timeout(const Duration(seconds: 25));
 
     final map = _decode(res);
+    if (res.statusCode == 500 && map['pending'] == true) {
+      return SonicpesaStatusResult(
+        paymentStatus: 'PENDING',
+        completed: false,
+        failed: false,
+        pending: true,
+        message: (map['error'] as String?)?.trim(),
+      );
+    }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw SonicpesaPaymentException(
         _userFacingMessage(map, res.statusCode, fallback: 'Imeshindikana kuangalia hali ya malipo.'),
@@ -163,7 +187,7 @@ class SonicpesaPaymentService {
       return 'Taarifa za malipo hazikamilika. Funga na fungua programu, kisha jaribu tena.';
     }
     if (lower.contains('phone') || lower.contains('tanzanian') || lower.contains('10 digits') || lower.contains('namba')) {
-      return 'Weka namba ya simu sahihi: 07…, 06… (Halotel 061/062/063/069), au 255…';
+      return 'Weka namba ya simu sahihi: 07…, 06… (Halotel 061/062/063), au 255…';
     }
     if (lower.contains('plan not found') || lower.contains('not available')) {
       return 'Mpango uliyochagua haupatikani. Chagua mpango mwingine.';

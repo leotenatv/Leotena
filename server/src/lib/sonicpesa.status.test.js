@@ -2,7 +2,7 @@
  * Regression checks for SonicPesa status parsing.
  * Run: node src/lib/sonicpesa.status.test.js
  */
-const { isSonicpesaFailure, isSonicpesaSuccess, readPaymentStatus } = require('./sonicpesa');
+const { isSonicpesaFailure, isSonicpesaSuccess, readPaymentStatus, readWebhookPaymentFields } = require('./sonicpesa');
 
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
@@ -53,6 +53,23 @@ const cases = [
     },
     expect: 'SUCCESS',
   },
+  {
+    name: 'webhook nested transaction.status SUCCESS',
+    raw: {
+      event: 'payment.completed',
+      data: { order_id: 'sp_wh_1', amount: 5000 },
+      transaction: { status: 'SUCCESS' },
+    },
+    expect: 'SUCCESS',
+  },
+  {
+    name: 'webhook order_status_data completed',
+    raw: {
+      event: 'payment.success',
+      data: { order_status_data: { order_status: 'completed', order_id: 'sp_wh_2' } },
+    },
+    expect: 'COMPLETED',
+  },
 ];
 
 for (const c of cases) {
@@ -64,6 +81,27 @@ assert(isSonicpesaSuccess(readPaymentStatus(cases[0].raw)), 'success detected');
 assert(isSonicpesaFailure(readPaymentStatus(cases[4].raw)), 'failure detected');
 assert(isSonicpesaSuccess('SUCCESSFUL'), 'SUCCESSFUL is paid');
 assert(isSonicpesaSuccess('SETTLED'), 'SETTLED is paid');
-assert(isSonicpesaSuccess(readPaymentStatus(cases[cases.length - 1].raw)), 'transaction.status success');
+assert(isSonicpesaSuccess(readPaymentStatus(cases[cases.length - 3].raw)), 'transaction.status success');
 
-console.log(`ok — ${cases.length} sonicpesa status cases passed`);
+const webhookCases = [
+  {
+    name: 'webhook fields from nested transaction',
+    raw: cases[cases.length - 2].raw,
+    expectStatus: 'SUCCESS',
+    expectOrder: 'sp_wh_1',
+  },
+  {
+    name: 'webhook fields from order_status_data',
+    raw: cases[cases.length - 1].raw,
+    expectStatus: 'COMPLETED',
+    expectOrder: 'sp_wh_2',
+  },
+];
+
+for (const c of webhookCases) {
+  const got = readWebhookPaymentFields(c.raw);
+  assert(got.status === c.expectStatus, `${c.name}: expected status ${c.expectStatus}, got ${got.status}`);
+  assert(got.orderId === c.expectOrder, `${c.name}: expected order ${c.expectOrder}, got ${got.orderId}`);
+}
+
+console.log(`ok — ${cases.length} sonicpesa status cases + ${webhookCases.length} webhook cases passed`);

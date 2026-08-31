@@ -221,8 +221,9 @@ class _PaymentSheetState extends State<PaymentSheet> {
             orderId: init.orderId,
             userName: name,
             phone: phone,
+            planId: selectedPkg.id,
           );
-          if (status.completed) {
+          if (status.completed && state.subscribed) {
             if (!mounted) return;
             Navigator.of(context).pop();
             SuccessModal.show(
@@ -242,7 +243,7 @@ class _PaymentSheetState extends State<PaymentSheet> {
           }
         } on SonicpesaPaymentException catch (e) {
           final code = e.statusCode;
-          if (code == 429 || code == 502 || code == 503 || code == 504) {
+          if (code == 429 || code == 500 || code == 502 || code == 503 || code == 504) {
             if (mounted) {
               setState(() => _error = 'Seva inaendelea kuchakata malipo…');
             }
@@ -316,7 +317,7 @@ class _PaymentSheetState extends State<PaymentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final selectedPkg = widget.packages.firstWhere((p) => p.id == _selected, orElse: () => widget.packages[1]);
+    final selectedPkg = widget.packages.firstWhere((p) => p.id == _selected, orElse: () => widget.packages.first);
 
     return Container(
       padding: EdgeInsets.fromLTRB(24, 12, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
