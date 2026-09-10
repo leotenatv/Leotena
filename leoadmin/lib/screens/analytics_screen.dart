@@ -19,11 +19,13 @@ class AnalyticsScreen extends StatelessWidget {
     final maxCat = catEntries.isEmpty ? 1 : catEntries.first.value;
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshAll(),
       toolbar: [
         Text('Takwimu', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
         const Spacer(),
       ],
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
           LayoutBuilder(
             builder: (context, c) {

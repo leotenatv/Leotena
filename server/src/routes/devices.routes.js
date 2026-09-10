@@ -90,30 +90,52 @@ router.get(
   '/admin/devices',
   requireAdminAuth,
   asyncRoute(async (req, res) => {
-    const q = (req.query.query || '').toLowerCase();
+    const q = String(req.query.query || '')
+      .trim()
+      .toLowerCase();
     const rows = await prisma.device.findMany({ orderBy: { createdAt: 'desc' } });
     const filtered = q
-      ? rows.filter(
-          (d) =>
-            d.name.toLowerCase().includes(q) || d.phone.toLowerCase().includes(q) || d.deviceId.toLowerCase().includes(q)
-        )
+      ? rows.filter((d) => {
+          const name = (d.name || '').toLowerCase();
+          const phone = (d.phone || '').toLowerCase();
+          const deviceId = (d.deviceId || '').toLowerCase();
+          const id = (d.id || '').toLowerCase();
+          return name.includes(q) || phone.includes(q) || deviceId.includes(q) || id.includes(q);
+        })
       : rows;
     res.json(filtered.map(serializeDevice));
   })
 );
 
+// Upsert by client deviceId so pasting an existing install ID links to that user
+// instead of creating an orphan row (or failing on unique constraint).
 router.post(
   '/admin/devices',
   requireAdminAuth,
   asyncRoute(async (req, res) => {
-    const { deviceId, name, phone } = req.body || {};
-    if (!deviceId || !deviceId.trim()) {
+    const { deviceId, name, phone, active } = req.body || {};
+    if (!deviceId || !String(deviceId).trim()) {
       return res.status(400).json({ error: 'deviceId is required' });
     }
-    const row = await prisma.device.create({
-      data: { deviceId: deviceId.trim(), name: name || '', phone: phone || '' },
+    const trimmedId = String(deviceId).trim();
+    const nameVal = name != null ? String(name).trim() : '';
+    const phoneVal = phone != null ? String(phone).trim() : '';
+    const existing = await prisma.device.findUnique({ where: { deviceId: trimmedId } });
+    const row = await prisma.device.upsert({
+      where: { deviceId: trimmedId },
+      update: {
+        ...(nameVal ? { name: nameVal } : {}),
+        ...(phoneVal ? { phone: phoneVal } : {}),
+        ...(typeof active === 'boolean' ? { active } : {}),
+      },
+      create: {
+        deviceId: trimmedId,
+        name: nameVal,
+        phone: phoneVal,
+        ...(typeof active === 'boolean' ? { active } : {}),
+      },
     });
-    res.status(201).json(serializeDevice(row));
+    res.status(existing ? 200 : 201).json(serializeDevice(row));
   })
 );
 

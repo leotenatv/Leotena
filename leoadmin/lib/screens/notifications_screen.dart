@@ -19,6 +19,7 @@ class NotificationsScreen extends StatelessWidget {
     final logs = state.notifications;
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshNotifications(),
       toolbar: [
         Text('${logs.length} arifa', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
         const Spacer(),
@@ -28,8 +29,9 @@ class NotificationsScreen extends StatelessWidget {
         ),
       ],
       child: logs.isEmpty
-          ? Center(child: Text('Bado hakuna arifa zilizotumwa', style: AdminTheme.body(13, color: AdminColors.textHint)))
+          ? adminPullMessage('Bado hakuna arifa zilizotumwa')
           : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               itemCount: logs.length,
               itemBuilder: (_, i) {
                 final n = logs[i];

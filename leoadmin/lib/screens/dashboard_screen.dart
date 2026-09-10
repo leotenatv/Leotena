@@ -22,8 +22,10 @@ class DashboardScreen extends StatelessWidget {
     ];
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshAll(),
       toolbar: const [],
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
           _HeroBanner(
             users: state.users.length,

@@ -18,6 +18,7 @@ class RatibaScreen extends StatelessWidget {
       ..sort((a, b) => a.dateTime.compareTo(b.dateTime));
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshSchedule(),
       toolbar: [
         Text('${items.length} vipindi', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
         const Spacer(),
@@ -27,8 +28,9 @@ class RatibaScreen extends StatelessWidget {
         ),
       ],
       child: items.isEmpty
-          ? Center(child: Text('Hakuna vipindi', style: AdminTheme.body(13, color: AdminColors.textHint)))
+          ? adminPullMessage('Hakuna vipindi')
           : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               itemCount: items.length,
               itemBuilder: (_, i) {
                 final s = items[i];

@@ -17,6 +17,7 @@ class PricingScreen extends StatelessWidget {
     final plans = state.pricingPlans;
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshPlans(),
       toolbar: [
         Text('${plans.length} bei', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
         const Spacer(),
@@ -25,9 +26,12 @@ class PricingScreen extends StatelessWidget {
           onTap: () => _openEditor(context, state.newPlanDraft(), isNew: true),
         ),
       ],
-      child: ListView.builder(
-        itemCount: plans.length,
-        itemBuilder: (_, i) {
+      child: plans.isEmpty
+          ? adminPullMessage('Hakuna bei bado')
+          : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: plans.length,
+              itemBuilder: (_, i) {
           final p = plans[i];
           return AdminListTile(
             leading: Container(

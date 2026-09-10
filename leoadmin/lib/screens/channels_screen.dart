@@ -37,6 +37,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
     final canReorder = q.isEmpty && _categoryFilter == 'all';
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshChannels(),
       toolbar: [
         Expanded(child: SearchField(hint: 'Tafuta kituo…', onChanged: state.setChannelQuery)),
         const SizedBox(width: 12),
@@ -63,9 +64,10 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
             ),
           Expanded(
             child: filtered.isEmpty
-                ? Center(child: Text('Hakuna vituo', style: AdminTheme.body(13, color: AdminColors.textHint)))
+                ? adminPullMessage('Hakuna vituo')
                 : canReorder
                     ? ReorderableListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         buildDefaultDragHandles: false,
                         itemCount: filtered.length,
                         onReorderItem: (oldIndex, newIndex) => runWithErrorSnackBar(
@@ -79,6 +81,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                         ),
                       )
                     : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
                         itemCount: filtered.length,
                         itemBuilder: (_, i) => _ChannelTile(
                           key: ValueKey(filtered[i].id),

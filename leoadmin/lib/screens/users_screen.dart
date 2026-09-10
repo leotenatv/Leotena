@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../data/api_client.dart';
 import '../models/admin_models.dart';
@@ -14,97 +15,128 @@ class UsersScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AdminState>();
-    final q = state.userQuery.toLowerCase();
+    final q = state.userQuery.trim().toLowerCase();
     final list = state.users.where((u) {
       if (q.isEmpty) return true;
       return u.name.toLowerCase().contains(q) ||
-          u.phone.contains(q) ||
-          u.deviceId.toLowerCase().contains(q);
+          u.phone.toLowerCase().contains(q) ||
+          u.deviceId.toLowerCase().contains(q) ||
+          u.id.toLowerCase().contains(q);
     }).toList();
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshUsers(),
       toolbar: [
-        Expanded(child: SearchField(hint: 'Tafuta jina, simu, kifaa…', onChanged: state.setUserQuery)),
+        Expanded(
+          child: SearchField(
+            hint: 'Tafuta jina, simu, au Device ID…',
+            onChanged: state.setUserQuery,
+          ),
+        ),
         const SizedBox(width: 12),
         AdminPrimaryButton(
           label: 'Ongeza',
           onTap: () => openUserEditor(context, state.newUserDraft(), isNew: true),
         ),
       ],
-      child: ListView.builder(
-        itemCount: list.length,
-        itemBuilder: (_, i) => _UserRow(user: list[i]),
-      ),
+      child: state.usersError != null
+          ? adminPullMessage(state.usersError!, color: AdminColors.danger)
+          : list.isEmpty
+              ? adminPullMessage(
+                  q.isEmpty
+                      ? 'Hakuna watumiaji bado'
+                      : 'Hakuna mtumiaji anayelingana na "$q"',
+                )
+              : ListView.builder(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  itemCount: list.length,
+                  itemBuilder: (_, i) => _UserRow(user: list[i]),
+                ),
     );
   }
 }
 
 Future<void> openUserEditor(BuildContext context, AppUser user, {required bool isNew}) async {
-    final name = TextEditingController(text: user.name);
-    final phone = TextEditingController(text: user.phone);
-    final device = TextEditingController(text: user.deviceId);
-    var active = user.active;
-    var saving = false;
-    String? formError;
+  final name = TextEditingController(text: user.name);
+  final phone = TextEditingController(text: user.phone);
+  final device = TextEditingController(text: user.deviceId);
+  var active = user.active;
+  var saving = false;
+  String? formError;
 
-    await showAdminSheet(
-      context: context,
-      title: isNew ? 'Mtumiaji mpya' : 'Hariri mtumiaji',
-      child: StatefulBuilder(
-        builder: (ctx, setLocal) => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            adminFieldLabel('Jina'),
-            adminTextField(controller: name, hint: 'Amani Joseph'),
-            const SizedBox(height: 14),
-            adminFieldLabel('Simu'),
-            adminTextField(controller: phone, hint: '0712345678', keyboardType: TextInputType.phone),
-            const SizedBox(height: 14),
-            adminFieldLabel('Kifaa (Device ID)'),
-            adminTextField(controller: device, hint: 'LT-XXXX'),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Hai', style: AdminTheme.body(14, color: AdminColors.textPrimary)),
-              value: active,
-              activeThumbColor: AdminColors.green,
-              onChanged: (v) => setLocal(() => active = v),
+  await showAdminSheet(
+    context: context,
+    title: isNew ? 'Mtumiaji mpya' : 'Hariri mtumiaji',
+    child: StatefulBuilder(
+      builder: (ctx, setLocal) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          adminFieldLabel('Jina (si lazima)'),
+          adminTextField(controller: name, hint: 'Amani Joseph — au acha tupu'),
+          const SizedBox(height: 14),
+          adminFieldLabel('Simu'),
+          adminTextField(controller: phone, hint: '0712345678', keyboardType: TextInputType.phone),
+          const SizedBox(height: 14),
+          adminFieldLabel('Kifaa (Device ID)'),
+          adminTextField(
+            controller: device,
+            hint: 'Bandika Device ID kutoka app (LT-…)',
+            readOnly: !isNew,
+          ),
+          if (isNew)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 4),
+              child: Text(
+                'Bandika Device ID kamili aliyokupa mtumiaji. Usibuni ID mpya.',
+                style: AdminTheme.body(11, color: AdminColors.textHint),
+              ),
             ),
-            if (formError != null) adminFormError(formError!),
-            adminSaveButton(
-              label: isNew ? 'Ongeza' : 'Hifadhi',
-              loading: saving,
-              onTap: () async {
-                final next = user.copyWith(
-                  name: name.text.trim(),
-                  phone: phone.text.trim(),
-                  deviceId: device.text.trim(),
-                  active: active,
-                );
-                if (next.name.isEmpty) return;
-                setLocal(() {
-                  saving = true;
-                  formError = null;
-                });
-                final state = context.read<AdminState>();
-                try {
-                  if (isNew) {
-                    await state.addUser(next);
-                  } else {
-                    await state.updateUser(next);
-                  }
-                  if (ctx.mounted) Navigator.pop(ctx);
-                } on ApiException catch (e) {
-                  setLocal(() {
-                    saving = false;
-                    formError = e.message;
-                  });
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Hai', style: AdminTheme.body(14, color: AdminColors.textPrimary)),
+            value: active,
+            activeThumbColor: AdminColors.green,
+            onChanged: (v) => setLocal(() => active = v),
+          ),
+          if (formError != null) adminFormError(formError!),
+          adminSaveButton(
+            label: isNew ? 'Ongeza / Unganisha' : 'Hifadhi',
+            loading: saving,
+            onTap: () async {
+              final next = user.copyWith(
+                name: name.text.trim(),
+                phone: phone.text.trim(),
+                deviceId: device.text.trim(),
+                active: active,
+              );
+              if (isNew && next.deviceId.isEmpty) {
+                setLocal(() => formError = 'Device ID inahitajika');
+                return;
+              }
+              setLocal(() {
+                saving = true;
+                formError = null;
+              });
+              final state = context.read<AdminState>();
+              try {
+                if (isNew) {
+                  await state.addUser(next);
+                } else {
+                  await state.updateUser(next);
                 }
-              },
-            ),
-          ],
-        ),
+                if (ctx.mounted) Navigator.pop(ctx);
+              } on ApiException catch (e) {
+                setLocal(() {
+                  saving = false;
+                  formError = e.message;
+                });
+              }
+            },
+          ),
+        ],
       ),
-    );
+    ),
+  );
 }
 
 class _UserRow extends StatelessWidget {
@@ -115,6 +147,8 @@ class _UserRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final premium = user.hasPremiumAccess;
     final remaining = AppUser.formatPremiumRemaining(user.premiumUntil, plan: user.plan);
+    final label = user.displayLabel;
+    final phonePart = user.phone.trim().isEmpty ? null : user.phone.trim();
 
     return AdminListTile(
       leading: CircleAvatar(
@@ -125,16 +159,36 @@ class _UserRow extends StatelessWidget {
           size: 22,
         ),
       ),
-      title: user.name,
-      subtitle: '${user.phone} · ${user.deviceId}',
+      title: label,
+      subtitle: [
+        if (phonePart != null) phonePart,
+        user.deviceId,
+      ].join(' · '),
       badges: [
         StatusBadge(
           premium ? remaining : 'Bure',
           color: premium ? AdminColors.green : AdminColors.info,
         ),
         if (!user.active) const StatusBadge('Zimwa', color: AdminColors.textHint),
+        if (user.name.trim().isEmpty) const StatusBadge('Bila jina', color: AdminColors.textHint),
       ],
       actions: [
+        IconButton(
+          tooltip: 'Nakili Device ID',
+          onPressed: () async {
+            await Clipboard.setData(ClipboardData(text: user.deviceId));
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Device ID imenakiliwa', style: AdminTheme.body(13, color: Colors.white)),
+                backgroundColor: AdminColors.greenDark,
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            );
+          },
+          icon: const Icon(Icons.copy_rounded, color: AdminColors.textSecondary, size: 18),
+        ),
         _AccessBtn(user: user),
         IconButton(
           tooltip: 'Hariri',
@@ -151,7 +205,7 @@ class _UserRow extends StatelessWidget {
           onDelete: () => deleteWithConfirm(
             context,
             dialogTitle: 'Futa mtumiaji',
-            itemName: user.name,
+            itemName: label,
             onDelete: () => context.read<AdminState>().deleteUser(user.id),
           ),
         ),
@@ -228,7 +282,7 @@ class _AccessSheetState extends State<_AccessSheet> {
       await context.read<AdminState>().grantPremium(widget.user.id, amount, unit);
       if (!mounted) return;
       Navigator.pop(context);
-      _toast('Ufikiaji umetolewa kwa ${widget.user.name}', AdminColors.greenDark);
+      _toast('Ufikiaji umetolewa kwa ${widget.user.displayLabel}', AdminColors.greenDark);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -243,7 +297,7 @@ class _AccessSheetState extends State<_AccessSheet> {
       await context.read<AdminState>().revokePremium(widget.user.id);
       if (!mounted) return;
       Navigator.pop(context);
-      _toast('Ufikiaji wa ${widget.user.name} umeondolewa', AdminColors.danger);
+      _toast('Ufikiaji wa ${widget.user.displayLabel} umeondolewa', AdminColors.danger);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
@@ -267,6 +321,7 @@ class _AccessSheetState extends State<_AccessSheet> {
     final u = widget.user;
     final active = u.hasPremiumAccess;
     final remaining = AppUser.formatPremiumRemaining(u.premiumUntil, plan: u.plan);
+    final label = u.displayLabel;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -288,24 +343,38 @@ class _AccessSheetState extends State<_AccessSheet> {
               CircleAvatar(
                 radius: 24,
                 backgroundColor: Colors.white.withValues(alpha: 0.2),
-                child: Text(u.name.isNotEmpty ? u.name[0].toUpperCase() : '?',
-                    style: AdminTheme.body(18, color: Colors.white, weight: FontWeight.w800)),
+                child: Text(
+                  label.isNotEmpty ? label[0].toUpperCase() : '?',
+                  style: AdminTheme.body(18, color: Colors.white, weight: FontWeight.w800),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(u.name, style: AdminTheme.body(15, color: Colors.white, weight: FontWeight.w800)),
+                    Text(label, style: AdminTheme.body(15, color: Colors.white, weight: FontWeight.w800)),
+                    const SizedBox(height: 4),
+                    Text(
+                      u.deviceId,
+                      style: AdminTheme.body(11, color: Colors.white.withValues(alpha: 0.85)),
+                    ),
                     const SizedBox(height: 4),
                     Row(
                       children: [
-                        Icon(active ? Icons.verified_rounded : Icons.lock_outline_rounded,
-                            color: Colors.white.withValues(alpha: 0.9), size: 14),
+                        Icon(
+                          active ? Icons.verified_rounded : Icons.lock_outline_rounded,
+                          color: Colors.white.withValues(alpha: 0.9),
+                          size: 14,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           active ? 'Inaendelea: $remaining' : 'Hana ufikiaji sasa',
-                          style: AdminTheme.body(12, color: Colors.white.withValues(alpha: 0.9), weight: FontWeight.w700),
+                          style: AdminTheme.body(
+                            12,
+                            color: Colors.white.withValues(alpha: 0.9),
+                            weight: FontWeight.w700,
+                          ),
                         ),
                       ],
                     ),
@@ -383,7 +452,11 @@ class _AccessSheetState extends State<_AccessSheet> {
               selected: selected,
               onSelected: (_) => setState(() => _unit = unit),
               showCheckmark: false,
-              labelStyle: AdminTheme.body(12, color: selected ? Colors.white : AdminColors.textSecondary, weight: FontWeight.w700),
+              labelStyle: AdminTheme.body(
+                12,
+                color: selected ? Colors.white : AdminColors.textSecondary,
+                weight: FontWeight.w700,
+              ),
               selectedColor: AdminColors.green,
               backgroundColor: AdminColors.bg,
               side: BorderSide(color: AdminColors.border.withValues(alpha: 0.35)),

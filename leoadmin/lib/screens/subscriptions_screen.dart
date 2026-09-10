@@ -17,6 +17,7 @@ class SubscriptionsScreen extends StatelessWidget {
     final fail = list.length - ok;
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshSubscriptions(),
       toolbar: [
         StatusBadge('$ok OK', color: AdminColors.green),
         StatusBadge('$fail Imeshindwa', color: AdminColors.danger),
@@ -26,9 +27,12 @@ class SubscriptionsScreen extends StatelessWidget {
           child: Text('Bei', style: AdminTheme.body(13, color: AdminColors.green, weight: FontWeight.w800)),
         ),
       ],
-      child: ListView.builder(
-        itemCount: list.length,
-        itemBuilder: (_, i) {
+      child: list.isEmpty
+          ? adminPullMessage('Hakuna malipo bado')
+          : ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: list.length,
+              itemBuilder: (_, i) {
           final s = list[i];
           return AdminListTile(
             leading: Container(

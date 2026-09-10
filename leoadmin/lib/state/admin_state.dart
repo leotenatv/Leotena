@@ -174,6 +174,16 @@ class AdminState extends ChangeNotifier {
     ]);
   }
 
+  Future<void> refreshAll() => bootstrap();
+  Future<void> refreshUsers() => _loadUsers();
+  Future<void> refreshChannels() => _loadChannels();
+  Future<void> refreshSchedule() => _loadSchedule();
+  Future<void> refreshSlides() => _loadSlides();
+  Future<void> refreshPlans() => _loadPlans();
+  Future<void> refreshSubscriptions() => _loadSubscriptions();
+  Future<void> refreshNotifications() => _loadNotifications();
+  Future<void> refreshSettings() => _loadSettings();
+
   Future<void> _loadSettings() async {
     try {
       _settings = await _repo.getSettings();
@@ -298,7 +308,7 @@ class AdminState extends ChangeNotifier {
   }
 
   void setUserQuery(String q) {
-    _userQuery = q;
+    _userQuery = q.trim();
     notifyListeners();
   }
 
@@ -493,7 +503,16 @@ class AdminState extends ChangeNotifier {
   // ── Users / Devices (Watumiaji) ──────────────────────────────
   Future<void> addUser(AppUser u) async {
     final created = await _repo.createDevice(u);
-    _users = [..._users, created];
+    final idx = _users.indexWhere(
+      (x) => x.id == created.id || x.deviceId == created.deviceId,
+    );
+    if (idx >= 0) {
+      final next = [..._users];
+      next[idx] = created;
+      _users = next;
+    } else {
+      _users = [created, ..._users];
+    }
     notifyListeners();
   }
 
@@ -539,11 +558,13 @@ class AdminState extends ChangeNotifier {
     return null;
   }
 
-  AppUser newUserDraft() => AppUser(
+  /// Empty deviceId on purpose — admin must paste the real client Device ID
+  /// (LT-… UUID from the app). Inventing a short ID creates an orphan row.
+  AppUser newUserDraft() => const AppUser(
         id: '',
         name: '',
         phone: '',
-        deviceId: 'LT-${DateTime.now().millisecondsSinceEpoch.toRadixString(16).toUpperCase().substring(0, 8)}',
+        deviceId: '',
         plan: UserPlan.free,
         joined: '',
       );

@@ -200,11 +200,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshSettings(),
       toolbar: [
         Text('Mipangilio', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
         const Spacer(),
       ],
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         children: [
           _card(
             accent: AdminColors.green,
@@ -249,7 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.system_update_alt_rounded,
             title: 'Lazima ku update',
             subtitle:
-                'Toleo la Play sasa ni 11.6.0 (code 55). Weka code KUBWA kuliko hiyo (mfano 56) au app version mpya (mfano 11.6.1). Toleo la sasa au jipya litaendelea; la zamani litalazimishwa kusasisha.',
+                'Toleo la Play sasa ni 11.7.1 (code 57). Weka code KUBWA kuliko hiyo (mfano 58) au app version mpya (mfano 11.7.2). Toleo la sasa au jipya litaendelea; la zamani litalazimishwa kusasisha.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -264,13 +266,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   controller: _codeVersion,
                   keyboardType: TextInputType.number,
                   style: AdminTheme.body(14, color: AdminColors.textPrimary),
-                  decoration: _deco('Code version ya chini inayoruhusiwa (mfano 56, si 55)'),
+                  decoration: _deco('Code version ya chini inayoruhusiwa (mfano 58, si 57)'),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _appVersion,
                   style: AdminTheme.body(14, color: AdminColors.textPrimary),
-                  decoration: _deco('App version (mfano 11.6.0)'),
+                  decoration: _deco('App version (mfano 11.7.1)'),
                 ),
                 const SizedBox(height: 10),
                 TextField(

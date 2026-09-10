@@ -5,11 +5,25 @@ import '../theme/admin_theme.dart';
 class AdminPage extends StatelessWidget {
   final List<Widget> toolbar;
   final Widget child;
+  final Future<void> Function()? onRefresh;
 
-  const AdminPage({super.key, required this.toolbar, required this.child});
+  const AdminPage({
+    super.key,
+    required this.toolbar,
+    required this.child,
+    this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
+    Widget body = child;
+    if (onRefresh != null) {
+      body = RefreshIndicator(
+        color: AdminColors.green,
+        onRefresh: onRefresh!,
+        child: child,
+      );
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       child: Column(
@@ -17,7 +31,7 @@ class AdminPage extends StatelessWidget {
         children: [
           Row(children: toolbar),
           const SizedBox(height: 16),
-          Expanded(child: child),
+          Expanded(child: body),
         ],
       ),
     );
@@ -157,11 +171,13 @@ Widget adminTextField({
   String? hint,
   TextInputType? keyboardType,
   int maxLines = 1,
+  bool readOnly = false,
 }) {
   return TextField(
     controller: controller,
     keyboardType: keyboardType,
     maxLines: maxLines,
+    readOnly: readOnly,
     style: AdminTheme.body(14, color: AdminColors.textPrimary),
     decoration: InputDecoration(hintText: hint),
   );
@@ -189,3 +205,23 @@ Widget adminFormError(String message) => Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Text(message, style: AdminTheme.body(12, color: AdminColors.danger, weight: FontWeight.w700)),
     );
+
+/// Empty / message body that still scrolls so [RefreshIndicator] can pull.
+Widget adminPullMessage(String message, {Color? color}) {
+  return ListView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    children: [
+      const SizedBox(height: 120),
+      Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Text(
+            message,
+            style: AdminTheme.body(13, color: color ?? AdminColors.textHint),
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    ],
+  );
+}

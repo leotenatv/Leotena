@@ -160,6 +160,15 @@ class AppUser {
     return plan == UserPlan.premium;
   }
 
+  /// Prefer profile name; fall back to Device ID so unnamed installs stay reachable.
+  String get displayLabel {
+    final n = name.trim();
+    if (n.isNotEmpty) return n;
+    final d = deviceId.trim();
+    if (d.isNotEmpty) return d;
+    return id;
+  }
+
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
         id: json['id'] as String,
         name: json['name'] as String? ?? '',

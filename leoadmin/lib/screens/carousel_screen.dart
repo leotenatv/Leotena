@@ -17,6 +17,7 @@ class CarouselScreen extends StatelessWidget {
     final slides = state.slides;
 
     return AdminPage(
+      onRefresh: () => context.read<AdminState>().refreshSlides(),
       toolbar: [
         Text('${slides.length} slaidi', style: AdminTheme.body(14, color: AdminColors.textSecondary, weight: FontWeight.w700)),
         const Spacer(),
@@ -26,8 +27,9 @@ class CarouselScreen extends StatelessWidget {
         ),
       ],
       child: slides.isEmpty
-          ? Center(child: Text('Hakuna slaidi', style: AdminTheme.body(13, color: AdminColors.textHint)))
+          ? adminPullMessage('Hakuna slaidi')
           : ReorderableListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
               buildDefaultDragHandles: false,
               itemCount: slides.length,
               onReorderItem: (oldIndex, newIndex) =>
