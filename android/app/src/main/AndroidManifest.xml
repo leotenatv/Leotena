@@ -3,6 +3,17 @@
     <!-- Android 13+ requires this to show any notification, including FCM pushes. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <!-- Keep Play device coverage wide — player/PiP/landscape must not exclude cars/tablets. -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.faketouch" android:required="false" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false" />
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
+    <uses-feature android:name="android.software.picture_in_picture" android:required="false" />
+
     <application
         android:label="Leotena"
         android:name="${applicationName}"
@@ -36,6 +47,15 @@
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </activity>
+        <activity
+            android:name=".OrizonPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/NativePlayerTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:supportsPictureInPicture="false"
+            android:resizeableActivity="true"
+            android:enableOnBackInvokedCallback="true" />
         <!-- Icon shown for FCM notifications received while the app is
              backgrounded/terminated (system tray renders these automatically). -->
         <meta-data

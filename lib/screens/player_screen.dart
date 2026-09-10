@@ -12,6 +12,7 @@ import '../widgets/channel_art.dart';
 import '../widgets/web_stream_player.dart';
 import '../app_route_observer.dart';
 import '../widgets/premium_lock_modal.dart';
+import '../services/native_android_player.dart';
 
 /// Full-screen, landscape-by-default video player with auto-hiding controls,
 /// green progress, a buffering animation, and an in-player live-channel
@@ -38,13 +39,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   double _position = 0;
   double _duration = 0;
   String _lang = 'sw';
-  String _quality = '360p';
+  String _quality = '480p';
+  String _zoomMode = 'contain';
+  static const _zoomModes = <String>['normal', 'fill', 'stretched', 'contain'];
+  static const _zoomLabels = <String, String>{
+    'normal': 'Kawaida',
+    'fill': 'Jaza',
+    'stretched': 'Panua',
+    'contain': 'Kamili',
+  };
   List<String> _languages = const ['sw', 'en'];
   List<String> _qualities = const ['360p', '480p', '720p', '1080p', 'Auto'];
   String? _playerError;
   int _reloadToken = 0;
   bool _humanCheck = false;
   bool _defaultsApplied = false;
+  bool _nativePlayerActive = false;
   DateTime _lastPosUi = DateTime.fromMillisecondsSinceEpoch(0);
   final _streamController = WebStreamController();
   Timer? _hideTimer;
@@ -58,6 +68,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   static const _defaultQualities = <String>['360p', '480p', '720p', '1080p', 'Auto'];
 
   void _enterLandscapeMode() {
+    if (_nativePlayerActive || _exiting) return;
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.landscapeLeft,
       DeviceOrientation.landscapeRight,
@@ -65,12 +76,73 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
   }
 
+  bool _exiting = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (NativeAndroidPlayer.supported) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openNativePlayer());
+      return;
+    }
     _enterLandscapeMode();
     _scheduleHide();
+  }
+
+  Future<void> _restorePortraitChrome() async {
+    try {
+      await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+      ));
+    } catch (_) {}
+  }
+
+  /// Safe exit used by device-back and after the native player closes.
+  Future<void> _leavePlayer() async {
+    if (_exiting) return;
+    _exiting = true;
+    _hideTimer?.cancel();
+    await _restorePortraitChrome();
+    if (!mounted) return;
+    try {
+      context.read<AppState>().stop();
+    } catch (_) {}
+    if (!mounted) return;
+    try {
+      Navigator.of(context).pop();
+    } catch (_) {}
+  }
+
+  Future<void> _openNativePlayer() async {
+    if (!mounted || _nativePlayerActive || _exiting) return;
+    final src = context.read<AppState>().nowPlaying;
+    if (src == null || src.url.trim().isEmpty) {
+      await _leavePlayer();
+      return;
+    }
+    setState(() => _nativePlayerActive = true);
+    try {
+      await NativeAndroidPlayer.open(
+        source: src,
+        audioLanguage: _lang,
+        defaultQuality: _quality,
+        videoZoomMode: _zoomMode,
+      );
+    } catch (_) {
+      // Fall back to in-app WebView player if native fails.
+      if (mounted && !_exiting) {
+        setState(() => _nativePlayerActive = false);
+        _enterLandscapeMode();
+        _scheduleHide();
+      }
+      return;
+    }
+    if (mounted) await _leavePlayer();
   }
 
   @override
@@ -84,14 +156,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && mounted) {
+    // Do not force landscape while the native activity owns the screen, or
+    // while we are exiting — orientation thrashing here crashes some devices.
+    if (state == AppLifecycleState.resumed &&
+        mounted &&
+        !_nativePlayerActive &&
+        !_exiting) {
       _enterLandscapeMode();
     }
   }
 
   @override
   void didPopNext() {
-    _enterLandscapeMode();
+    if (!_nativePlayerActive && !_exiting) _enterLandscapeMode();
   }
 
   void _startBuffer() {
@@ -103,7 +180,7 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
       _position = 0;
       _duration = 0;
       _lang = 'sw';
-      _quality = '360p';
+      _quality = '480p';
       _qualities = _defaultQualities;
       _languages = _defaultLanguages;
       _playerError = null;
@@ -126,7 +203,8 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     if (_defaultsApplied) return;
     _defaultsApplied = true;
     await _streamController.setLanguage('sw');
-    await _streamController.setQuality('360p');
+    await _streamController.setQuality('480p');
+    await _streamController.setZoom(_zoomMode);
   }
 
   void _scheduleHide() {
@@ -146,16 +224,19 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     appRouteObserver.unsubscribe(this);
     WidgetsBinding.instance.removeObserver(this);
     _hideTimer?.cancel();
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light,
-      systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: Brightness.dark,
-      systemNavigationBarDividerColor: Colors.transparent,
-    ));
+    // Portrait restore is handled in _leavePlayer; keep a defensive fallback.
+    if (!_exiting) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+        statusBarBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness: Brightness.dark,
+        systemNavigationBarDividerColor: Colors.transparent,
+      ));
+    }
     super.dispose();
   }
 
@@ -169,8 +250,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         ? '$hours:${minutes.toString().padLeft(2, '0')}:$secs'
         : '$minutes:$secs';
   }
-
-  void _exit() => Navigator.of(context).maybePop();
 
   Future<void> _openSwitcher() async {
     await ChannelSwitcherSheet.show(context, onSwitched: () {
@@ -238,13 +317,22 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final src = state.nowPlaying;
+    final nativeBusy = NativeAndroidPlayer.supported && _nativePlayerActive;
 
+    final Widget body;
     if (src == null) {
       // Defensive: nothing to play.
-      return const Scaffold(backgroundColor: AppColors.navyDeep);
-    }
-
-    return Scaffold(
+      body = const Scaffold(backgroundColor: AppColors.navyDeep);
+    } else if (nativeBusy) {
+      // Android uses native ExoPlayer activity — minimal shell while it is open.
+      body = const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.green),
+        ),
+      );
+    } else {
+      body = Scaffold(
       backgroundColor: AppColors.navyDeep,
       body: _wrapLandscape(
         Stack(
@@ -360,16 +448,9 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
 
             if (_playerError != null && !_humanCheck) _errorOverlay(),
 
-            // Minimal exit only — leave the full WebView free for the checkbox.
-            if (_humanCheck)
-              Align(
-                alignment: Alignment.topLeft,
-                child: Padding(
-                  padding: EdgeInsets.fromLTRB(16, MediaQuery.of(context).padding.top + 8, 16, 0),
-                  child: _circleBtn(Icons.chevron_left_rounded, _exit),
-                ),
-              )
-            else if (_controls)
+            // During human-check, keep chrome off so the WebView checkbox stays tappable.
+            // Device back exits the player (see PopScope below). No top title / back arrow.
+            if (!_humanCheck && _controls)
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: _toggleControls,
@@ -379,17 +460,16 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        const Color(0xFF06122A).withValues(alpha: 0.6),
+                        const Color(0xFF06122A).withValues(alpha: 0.35),
                         Colors.transparent,
                         Colors.transparent,
                         const Color(0xFF06122A).withValues(alpha: 0.78),
                       ],
-                      stops: const [0, 0.28, 0.62, 1],
+                      stops: const [0, 0.22, 0.62, 1],
                     ),
                   ),
                   child: Stack(
                     children: [
-                      _topBar(src),
                       _centerTransport(),
                       _bottomBar(src),
                     ],
@@ -400,35 +480,41 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
         ),
       ),
     );
+    }
+
+    // Device back leaves the player. canPop is false so we own the gesture
+    // (WebView must not steal it); native activity handles back while open.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop || !mounted || _nativePlayerActive || _exiting) return;
+        _leavePlayer();
+      },
+      child: body,
+    );
   }
 
-  Widget _topBar(PlaybackSource src) {
-    return Align(
-      alignment: Alignment.topCenter,
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, MediaQuery.of(context).padding.top + 8, 20, 0),
-        child: Row(
-          children: [
-            _circleBtn(Icons.chevron_left_rounded, _exit),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(src.title,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: AppTheme.body(15, color: Colors.white, weight: FontWeight.w700)),
-                  Text(src.subtitle,
-                      maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: AppTheme.body(11.5, color: Colors.white.withValues(alpha: 0.6))),
-                ],
-              ),
-            ),
-          ],
+  Future<void> _cycleZoom() async {
+    final idx = _zoomModes.indexOf(_zoomMode);
+    final next = _zoomModes[((idx < 0 ? 0 : idx) + 1) % _zoomModes.length];
+    setState(() => _zoomMode = next);
+    await _streamController.setZoom(next);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _zoomLabels[next] ?? next,
+          style: AppTheme.body(13, color: Colors.white, weight: FontWeight.w700),
         ),
+        duration: const Duration(milliseconds: 900),
+        backgroundColor: AppColors.navy.withValues(alpha: 0.92),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
+    _scheduleHide();
   }
 
   Widget _centerTransport() {
@@ -526,6 +612,11 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
                   _openQualityPicker,
                 ),
                 _tool(
+                  Icons.zoom_out_map_rounded,
+                  _zoomLabels[_zoomMode] ?? 'Kamili',
+                  _cycleZoom,
+                ),
+                _tool(
                   Icons.live_tv_rounded,
                   src.isChannel ? 'Badili Kituo' : 'Vituo',
                   _openSwitcher,
@@ -603,16 +694,6 @@ class _PlayerScreenState extends State<PlayerScreen> with WidgetsBindingObserver
     );
   }
 
-  Widget _circleBtn(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 42, height: 42,
-        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(13)),
-        child: Icon(icon, color: Colors.white, size: 22),
-      ),
-    );
-  }
 }
 
 /// In-player live channel switcher (modern bottom sheet). Switches streams
@@ -1025,13 +1106,13 @@ class QualityPickerSheet extends StatelessWidget {
                   Text('Badili Ubora', style: AppTheme.heading(19)),
                   const SizedBox(height: 4),
                   Text(
-                    'Chaguo-msingi ni 360p — bora kwa mtandao wa kawaida',
+                    'Chaguo-msingi ni 480p — uwiano mzuri wa ubora na kasi',
                     style: AppTheme.body(12, color: AppColors.textHint, weight: FontWeight.w600),
                   ),
                   const SizedBox(height: 16),
                   ...qualities.map((q) {
                     final active = q == selected;
-                    final isDefault = q == '360p';
+                    final isDefault = q == '480p';
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: Material(

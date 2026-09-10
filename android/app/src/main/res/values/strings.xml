@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="channel_unavailable_message">Video haikuweza kuchezwa. Jaribu tena.</string>
+    <string name="ok_understood">Sawa</string>
+    <string name="zoom_button">Badili ukubwa</string>
+    <string name="zoom_normal">Kawaida</string>
+    <string name="zoom_fill">Jaza</string>
+    <string name="zoom_stretched">Panua</string>
+    <string name="zoom_contain">Kamili</string>
+</resources>

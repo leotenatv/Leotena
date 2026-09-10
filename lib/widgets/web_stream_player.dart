@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../models/models.dart';
+import '../player/playback_http_headers.dart';
+import '../player/stream_url_utils.dart';
 
 typedef StreamStateCallback = void Function({
   bool? playing,
@@ -26,6 +28,9 @@ class WebStreamController {
       );
   Future<void> setLanguage(String language) => _run(
         'window.leotenaPlayer&&window.leotenaPlayer.setLanguage&&window.leotenaPlayer.setLanguage(${jsonEncode(language)})',
+      );
+  Future<void> setZoom(String mode) => _run(
+        'window.leotenaPlayer&&window.leotenaPlayer.setZoom&&window.leotenaPlayer.setZoom(${jsonEncode(mode)})',
       );
 
   Future<void> _run(String source) async {
@@ -169,10 +174,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
             ? null
             : URLRequest(
                 url: WebUri(url),
-                headers: {
-                  'Referer': _pageOrigin(url),
-                  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                },
+                headers: playbackHttpHeaders(url),
               ),
         initialData: _isMediaStream
             ? InAppWebViewInitialData(
@@ -295,7 +297,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
           _onLanguages(const ['sw', 'en']);
           _onQualities(const ['360p', '480p', '720p', '1080p', 'Auto']);
           _onLanguageChanged('sw');
-          _onQualityChanged('360p');
+          _onQualityChanged('480p');
         },
         onReceivedError: (_, request, error) {
           final isMain = request.isForMainFrame ?? true;
@@ -443,7 +445,8 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
     pause: function () {},
     seek: function () {},
     setQuality: function () {},
-    setLanguage: function () {}
+    setLanguage: function () {},
+    setZoom: function () {}
   };
 })();
 ''');
@@ -464,13 +467,30 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
   window.__leotenaEmbedReady = true;
 
   var css = document.createElement('style');
+  css.id = '__leotenaContainCss';
   css.textContent = [
     'html,body{margin:0!important;padding:0!important;width:100%!important;height:100%!important;overflow:hidden!important;background:#000!important}',
-    'iframe,video,.video-js,player,.player,#player,#vjs_video_3,canvas{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;max-width:none!important;max-height:none!important;border:0!important;object-fit:cover!important;background:#000!important;z-index:1!important;opacity:1!important;visibility:visible!important}',
+    'iframe,video,.video-js,player,.player,#player,#vjs_video_3,.shaka-video-container,canvas{position:fixed!important;inset:0!important;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;border:0!important;object-fit:contain!important;-webkit-object-fit:contain!important;background:#000!important;z-index:1!important;opacity:1!important;visibility:visible!important}',
+    'video,.shaka-video,.video-js video{object-fit:contain!important;-webkit-object-fit:contain!important}',
+    '@media (orientation:landscape){video,.shaka-video,.shaka-video-container video{object-fit:contain!important;-webkit-object-fit:contain!important}}',
     'video{pointer-events:none!important}',
-    'header,nav,footer,.ads,.ad,.banner,.navbar,.top-bar,.bottom-bar{display:none!important}'
+    'header,nav,footer,.ads,.ad,.banner,.navbar,.top-bar,.topbar,.channel-title,.player-title,.back-btn,.back-button,[class*="back-button"],[class*="backBtn"]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important}'
   ].join('');
   document.documentElement.appendChild(css);
+  function forceContain() {
+    var mode = window.__leotenaZoomMode || 'contain';
+    var fit = mode === 'fill' ? 'cover' : (mode === 'stretched' ? 'fill' : 'contain');
+    var vids = document.querySelectorAll('video');
+    for (var i = 0; i < vids.length; i++) {
+      try {
+        vids[i].style.setProperty('object-fit', fit, 'important');
+        vids[i].style.setProperty('max-width', '100%', 'important');
+        vids[i].style.setProperty('max-height', '100%', 'important');
+      } catch (_) {}
+    }
+  }
+  forceContain();
+  setInterval(forceContain, 2000);
 
   function pickVideo() {
     return document.querySelector('video');
@@ -522,7 +542,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
     try {
       var player = getShaka();
       var qualities = ['360p','480p','720p','1080p','Auto'];
-      var quality = activeQuality || '360p';
+      var quality = activeQuality || '480p';
       var lang = activeLanguage || 'sw';
       if (player) {
         var tracks = player.getVariantTracks() || [];
@@ -561,7 +581,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
         emitTracks('Auto');
         return true;
       }
-      var target = parseInt(value, 10) || 360;
+      var target = parseInt(value, 10) || 480;
       var tracks = player.getVariantTracks() || [];
       var chosen = pickClosest(tracks, target);
       if (!chosen) return false;
@@ -579,7 +599,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
     try {
       if (!window.hls || !window.hls.levels || !window.hls.levels.length) return false;
       if (value === 'Auto') { window.hls.currentLevel = -1; emitTracks('Auto'); return true; }
-      var target = parseInt(value, 10) || 360;
+      var target = parseInt(value, 10) || 480;
       var best = 0, bestDiff = 1e9;
       window.hls.levels.forEach(function (lvl, i) {
         var d = Math.abs((lvl.height || 0) - target);
@@ -647,6 +667,14 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
     },
     setLanguage: function (value) {
       applyLanguage(value);
+    },
+    setZoom: function (mode) {
+      var m = (mode || 'contain').toLowerCase();
+      if (m === 'cover' || m === 'zoom') m = 'fill';
+      if (m === 'stretch') m = 'stretched';
+      if (m === 'fit') m = 'normal';
+      window.__leotenaZoomMode = m;
+      forceContain();
     }
   };
 
@@ -664,16 +692,16 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
     } catch (_) {}
   }
 
-  emitTracks('360p', 'sw');
+  emitTracks('480p', 'sw');
   // Apply defaults once Shaka exists.
   var waits = 0;
   var readyTimer = setInterval(function () {
     waits++;
     if (getShaka() || waits > 40) {
       clearInterval(readyTimer);
-      applyShakaQuality('360p');
+      applyShakaQuality('480p');
       applyLanguage('sw');
-      emitTracks('360p', 'sw');
+      emitTracks('480p', 'sw');
     }
   }, 250);
 
@@ -713,7 +741,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
-    video{position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;background:#000;pointer-events:none}
+    video{position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#000;pointer-events:none}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/shaka-player@4.16.12/dist/shaka-player.compiled.js"></script>
 </head>
@@ -725,7 +753,17 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
     let lastStateAt = 0;
     let started = false;
     let preferredLang = 'sw';
-    let preferredQuality = '360p';
+    let preferredQuality = '480p';
+
+    function applyZoom(mode) {
+      var m = (mode || 'contain').toLowerCase();
+      if (m === 'cover' || m === 'zoom') m = 'fill';
+      if (m === 'stretch') m = 'stretched';
+      if (m === 'fit') m = 'normal';
+      window.__leotenaZoomMode = m;
+      var fit = m === 'fill' ? 'cover' : (m === 'stretched' ? 'fill' : 'contain');
+      video.style.setProperty('object-fit', fit, 'important');
+    }
 
     function call(name, payload) {
       try {
@@ -803,14 +841,14 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
     }
     function applyQuality(value) {
       if (!player) return false;
-      preferredQuality = value || '360p';
+      preferredQuality = value || '480p';
       if (preferredQuality === 'Auto') {
         player.configure({
           abr: { enabled: true, restrictions: { maxHeight: 1080 }, defaultBandwidthEstimate: 800000 }
         });
         return true;
       }
-      const target = parseInt(preferredQuality, 10) || 360;
+      const target = parseInt(preferredQuality, 10) || 480;
       // Lift any start-up height cap so 720p/1080p can be selected.
       player.configure({ abr: { enabled: false, restrictions: { maxHeight: 2160 } } });
       const pool = tracksForLang(preferredLang);
@@ -844,7 +882,8 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
       setLanguage: value => {
         applyLanguage(value);
         setTimeout(emitTracks, 180);
-      }
+      },
+      setZoom: value => applyZoom(value)
     };
 
     ['play','pause','playing','waiting','stalled','seeking','seeked','timeupdate','durationchange','ended']
@@ -860,7 +899,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
       call('playerTracks', {
         qualities: ['360p','480p','720p','1080p','Auto'],
         languages: ['sw','en'],
-        activeQuality: '360p',
+        activeQuality: '480p',
         activeLanguage: 'sw'
       });
     }
@@ -888,29 +927,28 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
         player.configure({
           abr: {
             enabled: false,
-            defaultBandwidthEstimate: 600000,
-            restrictions: { maxHeight: 360 }
+            defaultBandwidthEstimate: 1200000,
+            restrictions: { maxHeight: 480 }
           },
           preferredAudioLanguage: 'sw',
           preferredTextLanguage: 'sw',
           streaming: {
-            // Slightly deeper buffer = fewer scratches on unstable mobile nets.
-            rebufferingGoal: 2.5,
-            bufferingGoal: 12,
-            bufferBehind: 20,
+            rebufferingGoal: 1.0,
+            bufferingGoal: 4,
+            bufferBehind: 8,
             stallEnabled: true,
-            retryParameters: { maxAttempts: 4, baseDelay: 250, backoffFactor: 1.6, timeout: 15000 }
+            retryParameters: { maxAttempts: 6, baseDelay: 150, backoffFactor: 1.4, timeout: 15000 }
           },
           manifest: {
-            retryParameters: { maxAttempts: 4, baseDelay: 250, backoffFactor: 1.6, timeout: 12000 }
+            retryParameters: { maxAttempts: 6, baseDelay: 150, backoffFactor: 1.4, timeout: 12000 }
           },
           drm: { clearKeys: $clearKeysJson }
         });
         await player.load($sourceJson);
         started = true;
         applyLanguage('sw');
-        applyQuality('360p');
-        // Allow picking higher ladders after the 360p start stick.
+        applyQuality('480p');
+        // Allow picking higher ladders after the 480p start stick.
         try { player.configure({ abr: { restrictions: { maxHeight: 1080 } } }); } catch (_) {}
         emitTracks();
         emitState(true);
@@ -925,7 +963,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
       }
     }
     document.addEventListener('flutterInAppWebViewPlatformReady', init, {once:true});
-    setTimeout(() => { if (!started) init(); }, 400);
+    setTimeout(() => { if (!started) init(); }, 120);
   </script>
 </body>
 </html>
@@ -936,39 +974,10 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
 enum _EmbedPage { ok, forbidden, captcha }
 
 bool _looksLikeMediaUrl(String raw) {
-  final url = raw.trim().toLowerCase();
+  final url = raw.trim();
   if (url.isEmpty) return false;
-
-  // Explicit HTML/embed player endpoints must never go through Shaka.
-  if (url.contains('player.php') ||
-      url.contains('/embed/') ||
-      url.contains('embed.php') ||
-      (url.contains('/player/') && url.contains('.php'))) {
-    return false;
-  }
-
-  final uri = Uri.tryParse(raw.trim());
-  final path = (uri?.path ?? url).toLowerCase();
-  if (path.endsWith('.m3u8') ||
-      path.endsWith('.mpd') ||
-      path.endsWith('.mp4') ||
-      path.endsWith('.webm') ||
-      path.endsWith('.mkv') ||
-      path.endsWith('.ts') ||
-      path.endsWith('.m4v')) {
-    return true;
-  }
-
-  if (url.contains('m3u8') ||
-      url.contains('mpd') ||
-      url.contains('format=mp4') ||
-      url.contains('type=hls') ||
-      url.contains('type=dash')) {
-    return true;
-  }
-
-  // Unknown non-media URL (often a hosted HTML player) → load as page.
-  return false;
+  // Gateway / embed pages load as HTML; everything else goes through Shaka/Exo path.
+  return !useWebViewForUrl(url);
 }
 
 String _pageOrigin(String raw) {
