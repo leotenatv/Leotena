@@ -24,8 +24,10 @@ class AdminPage extends StatelessWidget {
         child: child,
       );
     }
+    final wide = MediaQuery.sizeOf(context).width >= 720;
+    final pad = wide ? 24.0 : 14.0;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      padding: EdgeInsets.fromLTRB(pad, 8, pad, 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -63,6 +65,50 @@ class AdminListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final narrow = MediaQuery.sizeOf(context).width < 720;
+    final info = Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          titleContent ??
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AdminTheme.body(15, color: AdminColors.textPrimary, weight: FontWeight.w700),
+              ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              subtitle!,
+              maxLines: narrow ? 2 : 1,
+              overflow: TextOverflow.ellipsis,
+              style: AdminTheme.body(12, color: AdminColors.textSecondary),
+            ),
+          ],
+          if (badges.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(spacing: 6, runSpacing: 6, children: badges),
+          ],
+          if (footer != null) ...[
+            const SizedBox(height: 8),
+            footer!,
+          ],
+        ],
+      ),
+    );
+
+    final header = Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (dragHandle != null) ...[dragHandle!, const SizedBox(width: 10)],
+        leading,
+        const SizedBox(width: 14),
+        info,
+        if (!narrow && actions.isNotEmpty) ...actions,
+      ],
+    );
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -71,40 +117,21 @@ class AdminListTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AdminColors.border.withValues(alpha: 0.35)),
       ),
-      child: Row(
-        children: [
-          if (dragHandle != null) ...[dragHandle!, const SizedBox(width: 10)],
-          leading,
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: narrow && actions.isNotEmpty
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                titleContent ??
-                    Text(title,
-                        style: AdminTheme.body(15,
-                            color: AdminColors.textPrimary,
-                            weight: FontWeight.w700)),
-                if (subtitle != null) ...[
-                  const SizedBox(height: 3),
-                  Text(subtitle!,
-                      style: AdminTheme.body(12,
-                          color: AdminColors.textSecondary)),
-                ],
-                if (badges.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(spacing: 6, runSpacing: 6, children: badges),
-                ],
-                if (footer != null) ...[
-                  const SizedBox(height: 8),
-                  footer!,
-                ],
+                header,
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: actions,
+                ),
               ],
-            ),
-          ),
-          ...actions,
-        ],
-      ),
+            )
+          : header,
     );
   }
 }

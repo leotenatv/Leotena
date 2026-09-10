@@ -143,73 +143,158 @@ class _UserRow extends StatelessWidget {
   final AppUser user;
   const _UserRow({required this.user});
 
+  Future<void> _copyDeviceId(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: user.deviceId));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Device ID imenakiliwa', style: AdminTheme.body(13, color: Colors.white)),
+        backgroundColor: AdminColors.greenDark,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final premium = user.hasPremiumAccess;
     final remaining = AppUser.formatPremiumRemaining(user.premiumUntil, plan: user.plan);
+    final hasName = user.name.trim().isNotEmpty;
     final label = user.displayLabel;
-    final phonePart = user.phone.trim().isEmpty ? null : user.phone.trim();
+    final phone = user.phone.trim();
 
-    return AdminListTile(
-      leading: CircleAvatar(
-        backgroundColor: premium ? AdminColors.green.withValues(alpha: 0.25) : AdminColors.navyMid,
-        child: Icon(
-          premium ? Icons.workspace_premium_rounded : Icons.person_rounded,
-          color: premium ? AdminColors.green : Colors.white,
-          size: 22,
-        ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 14, 12, 12),
+      decoration: BoxDecoration(
+        color: AdminColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AdminColors.border.withValues(alpha: 0.35)),
       ),
-      title: label,
-      subtitle: [
-        if (phonePart != null) phonePart,
-        user.deviceId,
-      ].join(' · '),
-      badges: [
-        StatusBadge(
-          premium ? remaining : 'Bure',
-          color: premium ? AdminColors.green : AdminColors.info,
-        ),
-        if (!user.active) const StatusBadge('Zimwa', color: AdminColors.textHint),
-        if (user.name.trim().isEmpty) const StatusBadge('Bila jina', color: AdminColors.textHint),
-      ],
-      actions: [
-        IconButton(
-          tooltip: 'Nakili Device ID',
-          onPressed: () async {
-            await Clipboard.setData(ClipboardData(text: user.deviceId));
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Device ID imenakiliwa', style: AdminTheme.body(13, color: Colors.white)),
-                backgroundColor: AdminColors.greenDark,
-                behavior: SnackBarBehavior.floating,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: premium ? AdminColors.green.withValues(alpha: 0.25) : AdminColors.navyMid,
+                child: Icon(
+                  premium ? Icons.workspace_premium_rounded : Icons.person_rounded,
+                  color: premium ? AdminColors.green : Colors.white,
+                  size: 20,
+                ),
               ),
-            );
-          },
-          icon: const Icon(Icons.copy_rounded, color: AdminColors.textSecondary, size: 18),
-        ),
-        _AccessBtn(user: user),
-        IconButton(
-          tooltip: 'Hariri',
-          onPressed: () => openUserEditor(context, user, isNew: false),
-          icon: const Icon(Icons.edit_rounded, color: AdminColors.textSecondary, size: 20),
-        ),
-        Switch(
-          value: user.active,
-          activeThumbColor: AdminColors.green,
-          onChanged: (_) =>
-              runWithErrorSnackBar(context, () => context.read<AdminState>().toggleUserActive(user.id)),
-        ),
-        DeleteIconButton(
-          onDelete: () => deleteWithConfirm(
-            context,
-            dialogTitle: 'Futa mtumiaji',
-            itemName: label,
-            onDelete: () => context.read<AdminState>().deleteUser(user.id),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AdminTheme.body(15, color: AdminColors.textPrimary, weight: FontWeight.w700),
+                    ),
+                    if (phone.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        phone,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AdminTheme.body(12, color: AdminColors.textSecondary),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        StatusBadge(
+                          premium ? remaining : 'Bure',
+                          color: premium ? AdminColors.green : AdminColors.info,
+                        ),
+                        if (!user.active) const StatusBadge('Zimwa', color: AdminColors.textHint),
+                        if (!hasName) const StatusBadge('Bila jina', color: AdminColors.textHint),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ),
-      ],
+          const SizedBox(height: 10),
+          Material(
+            color: AdminColors.bg.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(12),
+            child: InkWell(
+              onTap: () => _copyDeviceId(context),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 6, 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.smartphone_rounded, size: 14, color: AdminColors.textHint),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        user.deviceId,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AdminTheme.body(11, color: AdminColors.textSecondary, weight: FontWeight.w600),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Nakili Device ID',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                      onPressed: () => _copyDeviceId(context),
+                      icon: const Icon(Icons.copy_rounded, color: AdminColors.textSecondary, size: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 4,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _AccessBtn(user: user),
+              IconButton(
+                tooltip: 'Hariri',
+                visualDensity: VisualDensity.compact,
+                onPressed: () => openUserEditor(context, user, isNew: false),
+                icon: const Icon(Icons.edit_rounded, color: AdminColors.textSecondary, size: 20),
+              ),
+              Transform.scale(
+                scale: 0.85,
+                child: Switch(
+                  value: user.active,
+                  activeThumbColor: AdminColors.green,
+                  onChanged: (_) => runWithErrorSnackBar(
+                    context,
+                    () => context.read<AdminState>().toggleUserActive(user.id),
+                  ),
+                ),
+              ),
+              DeleteIconButton(
+                onDelete: () => deleteWithConfirm(
+                  context,
+                  dialogTitle: 'Futa mtumiaji',
+                  itemName: label,
+                  onDelete: () => context.read<AdminState>().deleteUser(user.id),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
