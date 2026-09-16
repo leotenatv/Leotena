@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../models/models.dart';
 import '../widgets/common.dart';
 import '../widgets/channel_art.dart';
+import '../widgets/app_backdrop.dart';
 import 'player_screen.dart';
 import '../widgets/premium_lock_modal.dart';
 
@@ -27,8 +28,9 @@ class MovieDetailsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final related = context.watch<AppState>().related(movie.id);
     return Scaffold(
-      backgroundColor: AppColors.bg,
-      body: ListView(
+      backgroundColor: Colors.transparent,
+      body: AppBackdrop.fill(
+        child: ListView(
         padding: const EdgeInsets.only(bottom: 30),
         children: [
           // Backdrop hero.
@@ -141,6 +143,7 @@ class MovieDetailsScreen extends StatelessWidget {
             ),
           ),
         ],
+        ),
       ),
     );
   }

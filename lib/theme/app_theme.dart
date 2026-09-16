@@ -4,15 +4,17 @@ import 'package:google_fonts/google_fonts.dart';
 /// Centralised design language for Leotena.
 ///
 /// Palette rules (per brand):
-/// - Backgrounds: white / very-soft light blue. Never black.
+/// - Backgrounds: soft ice / sky mist with gentle shine. Never black.
 /// - Text: dark navy / medium navy / soft-blue hint.
 /// - Accent (buttons, success, progress, premium badge): green.
 /// - Every card carries a soft dark-navy shadow with large rounded corners.
 class AppColors {
-  static const Color bg = Color(0xFFFFFFFF); // primary background
-  static const Color bgSoft = Color(0xFFEAF6FF); // secondary background
-  static const Color section = Color(0xFFF4FAFF); // very soft section
+  static const Color bg = Color(0xFFF3F9FF); // soft ice primary
+  static const Color bgHighlight = Color(0xFFFAFDFF); // near-white shine
+  static const Color bgSoft = Color(0xFFDCEEF9); // cool sky wash
+  static const Color section = Color(0xFFEAF4FC); // frosted chips / tiles
   static const Color card = Color(0xFFFFFFFF);
+  static const Color shine = Color(0xFFFFFFFF);
 
   static const Color textPrimary = Color(0xFF0F2748); // dark navy
   static const Color textSecondary = Color(0xFF3A5573); // medium navy
@@ -26,7 +28,7 @@ class AppColors {
   static const Color navyMid = Color(0xFF1D4A82);
 
   /// Soft dark-navy elevation shadow used on every floating card.
-  static List<BoxShadow> shadow({double blur = 30, double y = 16, double opacity = 0.22}) => [
+  static List<BoxShadow> shadow({double blur = 30, double y = 16, double opacity = 0.18}) => [
         BoxShadow(
           color: const Color(0xFF0F2748).withValues(alpha: opacity),
           blurRadius: blur,
@@ -37,7 +39,7 @@ class AppColors {
 
   static List<BoxShadow> greenGlow() => [
         BoxShadow(
-          color: green.withValues(alpha: 0.5),
+          color: green.withValues(alpha: 0.45),
           blurRadius: 24,
           offset: const Offset(0, 12),
           spreadRadius: -8,
@@ -61,7 +63,7 @@ class AppTheme {
         seedColor: AppColors.navyMid,
         primary: AppColors.navy,
         secondary: AppColors.green,
-        background: AppColors.bg,
+        surface: AppColors.bg,
         brightness: Brightness.light,
       ),
       useMaterial3: true,

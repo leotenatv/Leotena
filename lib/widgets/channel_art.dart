@@ -81,7 +81,7 @@ class ChannelArt extends StatelessWidget {
     this.width,
     this.height,
     this.borderRadius = BorderRadius.zero,
-    this.fit = BoxFit.fill,
+    this.fit = BoxFit.cover,
   });
 
   @override

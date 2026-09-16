@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../theme/responsive.dart';
+import '../widgets/app_backdrop.dart';
 import 'home_screen.dart';
 import 'ratiba_screen.dart';
 import 'mtumiaji_screen.dart';
@@ -17,6 +18,7 @@ class RootShell extends StatefulWidget {
 
 class _RootShellState extends State<RootShell> {
   int _index = 0;
+  DateTime? _lastBackAt;
 
   static const _tabs = [
     _TabDef(Icons.home_outlined, Icons.home_rounded, 'Nyumbani'),
@@ -26,61 +28,91 @@ class _RootShellState extends State<RootShell> {
 
   final _pages = const [HomeScreen(), RatibaScreen(), MtumiajiScreen()];
 
+  void _onRootBack() {
+    if (_index != 0) {
+      setState(() => _index = 0);
+      return;
+    }
+    final now = DateTime.now();
+    final last = _lastBackAt;
+    if (last != null && now.difference(last) < const Duration(seconds: 2)) {
+      SystemNavigator.pop();
+      return;
+    }
+    _lastBackAt = now;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.clearSnackBars();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          'Bofya tena ili kufunga programu',
+          style: AppTheme.body(13.5, color: Colors.white, weight: FontWeight.w700),
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.navy.withValues(alpha: 0.94),
+        margin: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final statusTop = MediaQuery.viewPaddingOf(context).top;
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        statusBarBrightness: Brightness.light,
-        systemNavigationBarColor: Colors.transparent,
-        systemNavigationBarIconBrightness: Brightness.dark,
-        systemNavigationBarDividerColor: Colors.transparent,
-      ),
-      child: Scaffold(
-        backgroundColor: Colors.white,
-        extendBody: true,
-        body: Stack(
-          children: [
-            Positioned.fill(
-              child: Padding(
-                padding: EdgeInsets.only(top: statusTop),
-                child: Stack(
-                  children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 350),
-                      transitionBuilder: (child, anim) => FadeTransition(
-                        opacity: anim,
-                        child: SlideTransition(
-                          position: Tween(begin: const Offset(0, 0.02), end: Offset.zero).animate(anim),
-                          child: child,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _onRootBack();
+      },
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarIconBrightness: Brightness.dark,
+          systemNavigationBarDividerColor: Colors.transparent,
+        ),
+        child: Scaffold(
+          backgroundColor: AppColors.bg,
+          extendBody: true,
+          body: AppBackdrop.fill(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Padding(
+                    padding: EdgeInsets.only(top: statusTop),
+                    child: Stack(
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 350),
+                          transitionBuilder: (child, anim) => FadeTransition(
+                            opacity: anim,
+                            child: SlideTransition(
+                              position: Tween(begin: const Offset(0, 0.02), end: Offset.zero).animate(anim),
+                              child: child,
+                            ),
+                          ),
+                          child: KeyedSubtree(key: ValueKey(_index), child: _pages[_index]),
                         ),
-                      ),
-                      child: KeyedSubtree(key: ValueKey(_index), child: _pages[_index]),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: _FloatingNav(
+                            index: _index,
+                            tabs: _tabs,
+                            onTap: (i) => setState(() => _index = i),
+                          ),
+                        ),
+                      ],
                     ),
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      child: _FloatingNav(
-                        index: _index,
-                        tabs: _tabs,
-                        onTap: (i) => setState(() => _index = i),
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: statusTop,
-              child: const ColoredBox(color: Colors.white),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -119,13 +151,13 @@ class _FloatingNav extends StatelessWidget {
                 height: barH,
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.82),
+                  color: AppColors.bgHighlight.withValues(alpha: 0.78),
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: const Color(0xFFD6E8F6), width: 1.2),
+                  border: Border.all(color: const Color(0xFFC5DDF0).withValues(alpha: 0.9), width: 1.2),
                   boxShadow: [
-                    ...AppColors.shadow(blur: 28, y: 14, opacity: 0.18),
+                    ...AppColors.shadow(blur: 28, y: 14, opacity: 0.16),
                     BoxShadow(
-                      color: AppColors.navy.withOpacity(0.06),
+                      color: AppColors.navy.withValues(alpha: 0.05),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -155,7 +187,7 @@ class _FloatingNav extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(22),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppColors.navy.withOpacity(0.28),
+                                    color: AppColors.navy.withValues(alpha: 0.28),
                                     blurRadius: 14,
                                     offset: const Offset(0, 6),
                                   ),
@@ -203,7 +235,7 @@ class _NavItem extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(22),
-        splashColor: AppColors.green.withOpacity(0.12),
+        splashColor: AppColors.green.withValues(alpha: 0.12),
         highlightColor: Colors.transparent,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 280),
@@ -219,7 +251,7 @@ class _NavItem extends StatelessWidget {
                 child: Icon(
                   active ? tab.activeIcon : tab.icon,
                   size: r.sp(22),
-                  color: active ? Colors.white : Colors.black,
+                  color: active ? Colors.white : AppColors.navy,
                 ),
               ),
               SizedBox(height: r.sp(3)),
@@ -227,7 +259,7 @@ class _NavItem extends StatelessWidget {
                 duration: const Duration(milliseconds: 280),
                 style: AppTheme.body(
                   r.sp(active ? 11.5 : 10.5),
-                  color: active ? Colors.white : Colors.black,
+                  color: active ? Colors.white : AppColors.navy,
                   weight: active ? FontWeight.w800 : FontWeight.w600,
                 ),
                 child: Text(tab.label, maxLines: 1, overflow: TextOverflow.ellipsis),

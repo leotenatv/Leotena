@@ -8,6 +8,7 @@ import '../theme/responsive.dart';
 import '../widgets/channel_art.dart';
 import '../widgets/common.dart';
 import '../widgets/premium_lock_modal.dart';
+import '../widgets/app_backdrop.dart';
 import 'player_screen.dart';
 
 enum _HitKind { movie, channel }
@@ -162,8 +163,9 @@ class _SearchScreenState extends State<SearchScreen> {
     final statusTop = MediaQuery.viewPaddingOf(context).top;
 
     return Material(
-      color: AppColors.bg,
-      child: Column(
+      color: Colors.transparent,
+      child: AppBackdrop.fill(
+        child: Column(
         children: [
           SizedBox(height: statusTop),
           Padding(
@@ -285,6 +287,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   ),
           ),
         ],
+        ),
       ),
     );
   }

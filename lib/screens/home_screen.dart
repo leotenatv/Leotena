@@ -128,14 +128,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 _freeChannelsRow(r, freeChannels),
                 SizedBox(height: r.sectionGap),
               ],
-              if (_show('football')) _channelWideRow(r, 'Football', _channelsBy('football')),
+              if (_show('football')) _channelPosterRow(r, 'Football', _channelsBy('football')),
               if (_show('tamthilia')) ...[
-                _channelWideRow(r, 'Tamthilia', _channelsBy('tamthilia')),
+                _channelPosterRow(r, 'Tamthilia', _channelsBy('tamthilia')),
                 _posterRow(r, 'Tamthilia', context.watch<AppState>().moviesByCategory('tamthilia')),
               ],
               if (_show('movies')) _posterRow(r, 'Movies', context.watch<AppState>().moviesByCategory('movies')),
               if (_show('burudani')) ...[
-                _channelWideRow(r, 'Burudani', _channelsBy('burudani')),
+                _channelPosterRow(r, 'Burudani', _channelsBy('burudani')),
                 _posterRow(r, 'Burudani', context.watch<AppState>().moviesByCategory('burudani')),
               ],
               if (_show('wanyama')) ...[
@@ -323,13 +323,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _freeChannelsRow(R r, List<Channel> items) {
     return SizedBox(
-      height: r.continueRowHeight,
+      height: r.posterRowHeight,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: EdgeInsets.symmetric(horizontal: r.pageGutter),
         itemCount: items.length,
         separatorBuilder: (_, __) => SizedBox(width: r.sp(14)),
-        itemBuilder: (_, i) => ChannelWideCard(channel: items[i], onTap: () => _openChannel(items[i])),
+        itemBuilder: (_, i) => ChannelPosterCard(channel: items[i], onTap: () => _openChannel(items[i])),
       ),
     );
   }
@@ -355,29 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Same card size/style as Chaneli za Bure.
-  Widget _channelWideRow(R r, String title, List<Channel> items) {
-    if (items.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(height: r.sectionGap),
-        SectionHeader(title, onAction: () {}),
-        SizedBox(
-          height: r.continueRowHeight,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: r.pageGutter),
-            itemCount: items.length,
-            separatorBuilder: (_, __) => SizedBox(width: r.sp(14)),
-            itemBuilder: (_, i) => ChannelWideCard(channel: items[i], onTap: () => _openChannel(items[i])),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Same portrait poster layout as Movies / Tamthilia.
+  /// Portrait channel posters — same width/height as Movies / Tamthilia.
   Widget _channelPosterRow(R r, String title, List<Channel> items) {
     if (items.isEmpty) return const SizedBox.shrink();
     return Column(

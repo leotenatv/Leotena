@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../widgets/app_backdrop.dart';
 
 /// Non-dismissible gate. User must tap Update sasa and install from Play Store.
 class ForceUpdateScreen extends StatefulWidget {
@@ -58,8 +59,9 @@ class _ForceUpdateScreenState extends State<ForceUpdateScreen> with WidgetsBindi
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppColors.bg,
-        body: SafeArea(
+        backgroundColor: Colors.transparent,
+        body: AppBackdrop.fill(
+          child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
             child: Column(
@@ -109,6 +111,7 @@ class _ForceUpdateScreenState extends State<ForceUpdateScreen> with WidgetsBindi
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),

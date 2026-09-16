@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../widgets/app_backdrop.dart';
 
 /// Full-screen block while admin has maintenance mode on.
 class MaintenanceScreen extends StatelessWidget {
@@ -19,8 +20,9 @@ class MaintenanceScreen extends StatelessWidget {
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppColors.bg,
-        body: SafeArea(
+        backgroundColor: Colors.transparent,
+        body: AppBackdrop.fill(
+          child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
             child: Column(
@@ -58,6 +60,7 @@ class MaintenanceScreen extends StatelessWidget {
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),

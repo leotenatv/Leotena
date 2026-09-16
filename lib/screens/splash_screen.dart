@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_backdrop.dart';
 import 'app_gate.dart';
 
 /// Animated splash: scaling logo, pulsing dots, fade to Home. Also where the
@@ -65,14 +66,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.bgSoft, AppColors.bg, AppColors.bgSoft],
-          ),
-        ),
+      backgroundColor: Colors.transparent,
+      body: AppBackdrop.fill(
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,

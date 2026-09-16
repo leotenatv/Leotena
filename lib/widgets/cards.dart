@@ -159,7 +159,7 @@ class ContinueCard extends StatelessWidget {
   }
 }
 
-/// Wide landscape channel card — same proportions as Chaneli za Bure.
+/// Channel card — portrait poster matching Movies (kept name for older call sites).
 class ChannelWideCard extends StatelessWidget {
   final Channel channel;
   final VoidCallback onTap;
@@ -167,87 +167,21 @@ class ChannelWideCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final r = R.of(context);
-    final w = r.continueCardWidth;
-    final h = r.continueRowHeight - 10;
-    return GestureDetector(
-      onTap: onTap,
-      child: SizedBox(
-        width: w,
-        height: h,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(r.sp(22)),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ChannelArt(channel: channel, width: w, height: h),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [const Color(0xFF0F2748).withOpacity(0.72), Colors.transparent],
-                    stops: const [0, 0.65],
-                  ),
-                ),
-              ),
-              Positioned(
-                top: 12,
-                left: 12,
-                child: ChannelAccessBadge(premium: channel.premium),
-              ),
-              Positioned(
-                top: 12,
-                right: 12,
-                child: Container(
-                  width: r.sp(38),
-                  height: r.sp(38),
-                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.22), shape: BoxShape.circle),
-                  child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: r.sp(24)),
-                ),
-              ),
-              Positioned(
-                left: 14,
-                right: 14,
-                bottom: 12,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      channel.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTheme.body(r.sp(14.5), color: Colors.white, weight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      channel.program,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTheme.body(r.sp(12), color: Colors.white.withOpacity(0.78), weight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return ChannelPosterCard(channel: channel, onTap: onTap);
   }
 }
 
-/// Portrait channel poster — same layout as Movies / Tamthilia.
+/// Portrait channel poster — same width/height ratio as [MoviePosterCard].
 class ChannelPosterCard extends StatelessWidget {
   final Channel channel;
   final VoidCallback onTap;
-  const ChannelPosterCard({super.key, required this.channel, required this.onTap});
+  final double? width;
+  const ChannelPosterCard({super.key, required this.channel, required this.onTap, this.width});
 
   @override
   Widget build(BuildContext context) {
     final r = R.of(context);
-    final w = r.posterWidth;
+    final w = width ?? r.posterWidth;
     final posterHeight = w * 1.45;
     return GestureDetector(
       onTap: onTap,
@@ -269,6 +203,7 @@ class ChannelPosterCard extends StatelessWidget {
                       width: w,
                       height: posterHeight,
                       borderRadius: BorderRadius.circular(r.sp(20)),
+                      fit: BoxFit.cover,
                     ),
                     DecoratedBox(
                       decoration: BoxDecoration(
@@ -300,7 +235,7 @@ class ChannelPosterCard extends StatelessWidget {
   }
 }
 
-/// Tall channel card with title overlay — used for Burudani rails.
+/// Tall channel card with title overlay — portrait movie proportions.
 class ChannelMiniCard extends StatelessWidget {
   final Channel channel;
   final VoidCallback onTap;
@@ -311,15 +246,15 @@ class ChannelMiniCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = R.of(context);
-    final cardWidth = width ?? r.channelCardWidth;
-    final cardHeight = height ?? r.channelCardHeight;
+    final cardWidth = width ?? r.posterWidth;
+    final cardHeight = height ?? cardWidth * 1.45;
     return SizedBox(
       width: cardWidth,
       height: cardHeight,
       child: GestureDetector(
         onTap: onTap,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(r.sp(22)),
+          borderRadius: BorderRadius.circular(r.sp(20)),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -327,7 +262,8 @@ class ChannelMiniCard extends StatelessWidget {
                 channel: channel,
                 width: cardWidth,
                 height: cardHeight,
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(r.sp(20)),
+                fit: BoxFit.cover,
               ),
               DecoratedBox(
                 decoration: BoxDecoration(
@@ -342,38 +278,17 @@ class ChannelMiniCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const Positioned(
-                top: 12,
-                left: 12,
-                child: GreenBadge('● LIVE'),
-              ),
-              Positioned(
-                top: 12,
-                right: 12,
-                child: ChannelAccessBadge(premium: channel.premium),
-              ),
+              if (channel.premium)
+                const Positioned(top: 10, left: 10, child: PremiumChannelBadge()),
               Positioned(
                 left: 14,
                 right: 14,
                 bottom: 16,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      channel.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTheme.body(15, color: Colors.white, weight: FontWeight.w800),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      channel.program,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTheme.body(12, color: Colors.white.withOpacity(0.78), weight: FontWeight.w600),
-                    ),
-                  ],
+                child: Text(
+                  channel.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTheme.body(15, color: Colors.white, weight: FontWeight.w800),
                 ),
               ),
             ],
