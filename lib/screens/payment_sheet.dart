@@ -209,11 +209,12 @@ class _PaymentSheetState extends State<PaymentSheet> {
 
       setState(() => _error = init.message);
 
-      const maxAttempts = 60;
+      const maxAttempts = 70;
       for (var i = 0; i < maxAttempts; i++) {
-        // Slower polling avoids Sonic "Too Many Attempts" which blocked auto-upgrade.
-        final delay = i < 10 ? const Duration(seconds: 2) : const Duration(seconds: 4);
-        await Future.delayed(delay);
+        // First check is immediate. Later gaps stay under Sonic's rate limit.
+        if (i > 0) {
+          await Future.delayed(i < 16 ? const Duration(milliseconds: 1200) : const Duration(seconds: 3));
+        }
         if (!mounted) return;
 
         try {

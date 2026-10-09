@@ -3,24 +3,30 @@ const SONICPESA_TIMEOUT_MS = 28_000;
 /** Outer transport OK only — never treat payment terminal states as "not a status". */
 const API_TRANSPORT_OK = new Set(['ok']);
 
+function cleanEnv(name) {
+  return String(process.env[name] || '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '');
+}
+
 function sonicHeaders() {
   const h = {
     Accept: 'application/json',
     'Content-Type': 'application/json',
-    'X-API-KEY': process.env.SONICPESA_API_KEY || '',
+    'X-API-KEY': cleanEnv('SONICPESA_API_KEY'),
   };
   const secret =
-    process.env.SONICPESA_SECRET_KEY ||
-    process.env.SONICPESA_API_SECRET ||
-    process.env.SONICPESA_SECRETE_KEY ||
-    '';
-  // Sonic dashboard / error text: some accounts expect X-SECRET-KEY.
-  if (secret.trim()) h['X-SECRET-KEY'] = secret.trim();
+    cleanEnv('SONICPESA_SECRET_KEY') ||
+    cleanEnv('SONICPESA_API_SECRET') ||
+    cleanEnv('SONICPESA_SECRETE_KEY');
+  // Official SDK always sends both headers. A quoted or padded secret makes
+  // Sonic fail the push on every network.
+  if (secret) h['X-SECRET-KEY'] = secret;
   return h;
 }
 
 /** Short cache so aggressive app polling does not burn Sonic rate limits. */
-const ORDER_STATUS_CACHE_TTL_MS = 6_000;
+const ORDER_STATUS_CACHE_TTL_MS = 2_500;
 const _orderStatusCache = new Map();
 
 function isSonicpesaRateLimited(errorOrMessage) {
@@ -29,7 +35,7 @@ function isSonicpesaRateLimited(errorOrMessage) {
 }
 
 function sonicpesaConfigured() {
-  return Boolean((process.env.SONICPESA_API_KEY || '').trim());
+  return Boolean(cleanEnv('SONICPESA_API_KEY'));
 }
 
 /** Local `07…` / `06…` or `255…` → `2557XXXXXXXX` / `2556XXXXXXXX`. */

@@ -22,7 +22,7 @@ import '../models/models.dart';
 class AppState extends ChangeNotifier {
   final ApiClient _api = ApiClient();
   late final ContentRepository _repo = ContentRepository(_api);
-  final SonicpesaPaymentService _sonicPay = SonicpesaPaymentService();
+  late final SonicpesaPaymentService _sonicPay = SonicpesaPaymentService(api: _api);
 
   /// Silent background refresh so admin changes show up without a restart.
   static const _autoRefreshInterval = Duration(seconds: 30);

@@ -20,11 +20,11 @@ class ApiClient {
 
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'https://leotena-production-d6b5.up.railway.app',
+    defaultValue: 'https://leotena-api-production.up.railway.app',
   );
 
-  static const _liveHost = 'https://leotena-production-d6b5.up.railway.app';
-  static const _legacyHost = 'https://leotena-api-production.up.railway.app';
+  static const _liveHost = 'https://leotena-api-production.up.railway.app';
+  static const _legacyHost = 'https://leotena-production-d6b5.up.railway.app';
 
   String? _token;
   String _base = baseUrl.replaceAll(RegExp(r'/$'), '');

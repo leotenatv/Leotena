@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -7,10 +8,15 @@ import 'payment_config.dart';
 
 /// SonicPesa payment flow via Leotena API (keys stay on server).
 class SonicpesaPaymentService {
-  SonicpesaPaymentService({String? apiBase})
-      : baseUrl = (apiBase ?? ApiClient.baseUrl).replaceAll(RegExp(r'/+$'), '');
+  SonicpesaPaymentService({ApiClient? api, String? apiBase})
+      : _api = api,
+        _pinnedBase = apiBase?.replaceAll(RegExp(r'/+$'), '');
 
-  final String baseUrl;
+  final ApiClient? _api;
+  final String? _pinnedBase;
+
+  /// Reused so status polls keep the TLS connection on slow mobile networks.
+  final http.Client _http = http.Client();
 
   Future<SonicpesaInitiateResult> initiate({
     required String deviceId,
@@ -19,18 +25,16 @@ class SonicpesaPaymentService {
     required String planId,
   }) async {
     final localPhone = PaymentConfig.normalizeTzLocalPhone(phone) ?? phone.trim();
-    final res = await http
-        .post(
-          Uri.parse('$baseUrl/payments/sonicpesa/initiate'),
-          headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
-          body: jsonEncode({
-            'deviceId': deviceId,
-            'userName': userName,
-            'phone': localPhone,
-            'planId': planId,
-          }),
-        )
-        .timeout(const Duration(seconds: 35));
+    final res = await _post(
+      '/payments/sonicpesa/initiate',
+      {
+        'deviceId': deviceId,
+        'userName': userName,
+        'phone': localPhone,
+        'planId': planId,
+      },
+      const Duration(seconds: 35),
+    );
 
     final map = _decode(res);
     if (res.statusCode == 500) {
@@ -100,19 +104,17 @@ class SonicpesaPaymentService {
     final localPhone = phone != null && phone.isNotEmpty
         ? (PaymentConfig.normalizeTzLocalPhone(phone) ?? phone.trim())
         : null;
-    final res = await http
-        .post(
-          Uri.parse('$baseUrl/payments/sonicpesa/status'),
-          headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
-          body: jsonEncode({
-            'deviceId': deviceId,
-            'orderId': orderId,
-            if (userName != null && userName.isNotEmpty) 'userName': userName,
-            if (localPhone != null && localPhone.isNotEmpty) 'phone': localPhone,
-            if (planId != null && planId.isNotEmpty) 'planId': planId,
-          }),
-        )
-        .timeout(const Duration(seconds: 25));
+    final res = await _post(
+      '/payments/sonicpesa/status',
+      {
+        'deviceId': deviceId,
+        'orderId': orderId,
+        if (userName != null && userName.isNotEmpty) 'userName': userName,
+        if (localPhone != null && localPhone.isNotEmpty) 'phone': localPhone,
+        if (planId != null && planId.isNotEmpty) 'planId': planId,
+      },
+      const Duration(seconds: 18),
+    );
 
     final map = _decode(res);
     if (res.statusCode == 500 && map['pending'] == true) {
@@ -147,6 +149,67 @@ class SonicpesaPaymentService {
       message: (map['message'] as String?)?.trim(),
       deviceJson: map['device'] is Map<String, dynamic> ? map['device'] as Map<String, dynamic> : null,
     );
+  }
+
+  Future<http.Response> _post(String path, Map<String, dynamic> body, Duration timeout) async {
+    try {
+      final origin = await _origin();
+      var res = await _send(origin, path, body, timeout);
+      final api = _api;
+      if (api != null && ApiClient.isMissingApplication(res)) {
+        api.rejectOrigin(origin);
+        final next = await _origin();
+        if (next != origin) res = await _send(next, path, body, timeout);
+      }
+      if (ApiClient.isMissingApplication(res)) {
+        throw SonicpesaPaymentException(
+          'Seva ya malipo haipatikani kwa sasa. Jaribu tena baada ya dakika moja.',
+          statusCode: 503,
+        );
+      }
+      return res;
+    } on SonicpesaPaymentException {
+      rethrow;
+    } on TimeoutException {
+      throw SonicpesaPaymentException(
+        'Seva ya malipo imechelewa kujibu. Angalia simu yako — PIN inaweza kuwa imetumwa.',
+        statusCode: 504,
+      );
+    } catch (e) {
+      final s = e.toString().toLowerCase();
+      if (s.contains('socket') ||
+          s.contains('clientexception') ||
+          s.contains('connection') ||
+          s.contains('host lookup') ||
+          s.contains('timed out')) {
+        throw SonicpesaPaymentException(
+          'Hitilafu ya mtandao. Angalia intaneti kisha jaribu tena.',
+          statusCode: 503,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  Future<String> _origin() async {
+    final pinned = _pinnedBase;
+    if (pinned != null && pinned.isNotEmpty) return pinned;
+    final api = _api;
+    if (api != null) {
+      await api.resolveHost();
+      return api.origin;
+    }
+    return ApiClient.baseUrl.replaceAll(RegExp(r'/+$'), '');
+  }
+
+  Future<http.Response> _send(String origin, String path, Map<String, dynamic> body, Duration timeout) {
+    return _http
+        .post(
+          Uri.parse('$origin$path'),
+          headers: const {'Content-Type': 'application/json', 'Accept': 'application/json'},
+          body: jsonEncode(body),
+        )
+        .timeout(timeout);
   }
 
   Map<String, dynamic> _decode(http.Response res) {
@@ -188,6 +251,9 @@ class SonicpesaPaymentService {
     }
     if (lower.contains('phone') || lower.contains('tanzanian') || lower.contains('10 digits') || lower.contains('namba')) {
       return 'Weka namba ya simu sahihi: 07…, 06… (Halotel 061/062/063), au 255…';
+    }
+    if (lower.contains('application not found')) {
+      return 'Seva ya malipo haipatikani kwa sasa. Jaribu tena baada ya dakika moja.';
     }
     if (lower.contains('plan not found') || lower.contains('not available')) {
       return 'Mpango uliyochagua haupatikani. Chagua mpango mwingine.';
