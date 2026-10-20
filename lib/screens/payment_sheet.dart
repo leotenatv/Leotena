@@ -209,57 +209,33 @@ class _PaymentSheetState extends State<PaymentSheet> {
 
       setState(() => _error = init.message);
 
-      const maxAttempts = 70;
-      for (var i = 0; i < maxAttempts; i++) {
-        // First check is immediate. Later gaps stay under Sonic's rate limit.
-        if (i > 0) {
-          await Future.delayed(i < 16 ? const Duration(milliseconds: 1200) : const Duration(seconds: 3));
-        }
-        if (!mounted) return;
-
-        try {
-          final status = await state.pollSonicPayment(
-            orderId: init.orderId,
-            userName: name,
-            phone: phone,
-            planId: selectedPkg.id,
-          );
-          if (status.completed && state.subscribed) {
-            if (!mounted) return;
-            Navigator.of(context).pop();
-            SuccessModal.show(
-              context,
-              title: 'Malipo Yamefanikiwa!',
-              message: 'Karibu $name! Kifurushi cha ${selectedPkg.name} (TSh ${selectedPkg.price}) kimewezeshwa.',
-            );
-            return;
-          }
-          if (status.failed) {
-            if (!mounted) return;
-            setState(() {
-              _paying = false;
-              _error = status.message ?? 'Malipo hayajakamilika. Jaribu tena.';
-            });
-            return;
-          }
-        } on SonicpesaPaymentException catch (e) {
-          final code = e.statusCode;
-          if (code == 429 || code == 500 || code == 502 || code == 503 || code == 504) {
-            if (mounted) {
-              setState(() => _error = 'Seva inaendelea kuchakata malipo…');
-            }
-            await Future.delayed(const Duration(seconds: 5));
-          }
-          // Soft: keep polling through other transient issues.
-        }
-        if (!mounted) return;
-        setState(() {
-          _error = i < 8
-              ? PaymentConfig.paymentPromptFor(phone)
-              : 'Bado tunasubiri uthibitisho wa ${PaymentConfig.networkLabel(PaymentConfig.detectNetwork(phone))}…';
-        });
+      final wait = await state.awaitSonicPayment(
+        orderId: init.orderId,
+        alive: () => mounted,
+        userName: name,
+        phone: phone,
+        planId: selectedPkg.id,
+        onProgress: (message) {
+          if (mounted) setState(() => _error = message);
+        },
+      );
+      if (!mounted || wait.cancelled) return;
+      if (wait.status?.completed == true && state.subscribed) {
+        Navigator.of(context).pop();
+        SuccessModal.show(
+          context,
+          title: 'Malipo Yamefanikiwa!',
+          message: 'Karibu $name! Kifurushi cha ${selectedPkg.name} (TSh ${selectedPkg.price}) kimewezeshwa.',
+        );
+        return;
       }
-      if (!mounted) return;
+      if (wait.status?.failed == true) {
+        setState(() {
+          _paying = false;
+          _error = wait.status?.message ?? 'Malipo hayajakamilika. Jaribu tena.';
+        });
+        return;
+      }
       setState(() {
         _paying = false;
         _error = 'Muda wa kusubiri malipo umeisha. Hakikisha umethibitisha PIN kwenye simu, kisha jaribu tena.';

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../security/secure_http.dart';
 import 'api_client.dart';
 import 'payment_config.dart';
 
@@ -16,7 +17,7 @@ class SonicpesaPaymentService {
   final String? _pinnedBase;
 
   /// Reused so status polls keep the TLS connection on slow mobile networks.
-  final http.Client _http = http.Client();
+  final http.Client _http = secureHttpClient();
 
   Future<SonicpesaInitiateResult> initiate({
     required String deviceId,
@@ -25,16 +26,46 @@ class SonicpesaPaymentService {
     required String planId,
   }) async {
     final localPhone = PaymentConfig.normalizeTzLocalPhone(phone) ?? phone.trim();
-    final res = await _post(
-      '/payments/sonicpesa/initiate',
-      {
-        'deviceId': deviceId,
-        'userName': userName,
-        'phone': localPhone,
-        'planId': planId,
-      },
-      const Duration(seconds: 35),
-    );
+    // A busy gateway answers 503/429 while the push queue catches up.
+    // Retrying is safe: the server joins the same PIN push instead of sending another.
+    late http.Response res;
+    var accepted = false;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      try {
+        res = await _post(
+          '/payments/sonicpesa/initiate',
+          {
+            'deviceId': deviceId,
+            'userName': userName,
+            'phone': localPhone,
+            'planId': planId,
+          },
+          const Duration(seconds: 35),
+        );
+      } on SonicpesaPaymentException catch (e) {
+        final code = e.statusCode;
+        final retryable = code == 429 || code == 503 || code == 504;
+        if (retryable && attempt < 3) {
+          await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+          continue;
+        }
+        rethrow;
+      }
+      accepted = true;
+      final code = res.statusCode;
+      if ((code == 429 || code == 503 || code == 504) && attempt < 3) {
+        accepted = false;
+        await Future.delayed(Duration(seconds: 2 * (attempt + 1)));
+        continue;
+      }
+      break;
+    }
+    if (!accepted) {
+      throw SonicpesaPaymentException(
+        'Seva ya malipo ina shughuli nyingi. Jaribu tena baada ya sekunde chache.',
+        statusCode: 503,
+      );
+    }
 
     final map = _decode(res);
     if (res.statusCode == 500) {
@@ -89,6 +120,7 @@ class SonicpesaPaymentService {
       message: (map['message'] as String?)?.trim() ?? PaymentConfig.paymentPromptFor(localPhone),
       completed: map['completed'] == true,
       local: map['local'] == true,
+      queued: map['queued'] == true,
       premiumUntil: _parsePremiumUntil(map['premiumUntil'] ?? map['premium_until']),
       deviceJson: map['device'] is Map<String, dynamic> ? map['device'] as Map<String, dynamic> : null,
     );
@@ -123,6 +155,7 @@ class SonicpesaPaymentService {
         completed: false,
         failed: false,
         pending: true,
+        queued: map['queued'] == true,
         message: (map['error'] as String?)?.trim(),
       );
     }
@@ -140,11 +173,13 @@ class SonicpesaPaymentService {
     final failed = map['failed'] == true;
     final premiumUntil = _parsePremiumUntil(map['premiumUntil'] ?? map['premium_until']);
 
+    final queued = map['queued'] == true || status == 'QUEUED';
     return SonicpesaStatusResult(
       paymentStatus: status,
       completed: completed,
       failed: failed,
-      pending: map['pending'] == true || (!completed && !failed),
+      pending: map['pending'] == true || queued || (!completed && !failed),
+      queued: queued,
       premiumUntil: premiumUntil,
       message: (map['message'] as String?)?.trim(),
       deviceJson: map['device'] is Map<String, dynamic> ? map['device'] as Map<String, dynamic> : null,
@@ -291,6 +326,7 @@ class SonicpesaInitiateResult {
     required this.message,
     this.completed = false,
     this.local = false,
+    this.queued = false,
     this.premiumUntil,
     this.deviceJson,
   });
@@ -300,6 +336,7 @@ class SonicpesaInitiateResult {
   final String message;
   final bool completed;
   final bool local;
+  final bool queued;
   final DateTime? premiumUntil;
   final Map<String, dynamic>? deviceJson;
 }
@@ -310,6 +347,7 @@ class SonicpesaStatusResult {
     required this.completed,
     required this.failed,
     required this.pending,
+    this.queued = false,
     this.premiumUntil,
     this.message,
     this.deviceJson,
@@ -319,6 +357,7 @@ class SonicpesaStatusResult {
   final bool completed;
   final bool failed;
   final bool pending;
+  final bool queued;
   final DateTime? premiumUntil;
   final String? message;
   final Map<String, dynamic>? deviceJson;

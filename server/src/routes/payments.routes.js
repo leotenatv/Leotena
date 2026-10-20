@@ -8,16 +8,23 @@ const {
   normalizePaymentStatus,
   isSonicpesaSuccess,
   isSonicpesaFailure,
-  sonicpesaCreateOrder,
   sonicpesaOrderStatus,
   readWebhookPaymentFields,
 } = require('../lib/sonicpesa');
 const {
   detectTzMobileNetwork,
   mobileMoneyMethodLabel,
-  paymentPromptForPhone,
   mapSonicInitiateError,
 } = require('../lib/mobileMoney');
+const {
+  acceptPaymentPush,
+  findPaymentByOrderRef,
+  attachInflightSonicOrder,
+  providerOrderId,
+  queuedMessage,
+  shouldDeferStatus,
+  noteStatusCheck,
+} = require('../lib/paymentDispatch');
 const {
   withDbRetry,
   parseAmountTzs,
@@ -106,85 +113,24 @@ router.post(
 
     const emailBase = deviceId.replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 40) || 'viewer';
     const buyerEmail = String(b.buyerEmail || b.buyer_email || '').trim() || `${emailBase}@leotena.app`;
-
-    let order;
-    try {
-      order = await sonicpesaCreateOrder({
-        buyer_email: buyerEmail,
-        buyer_name: userName,
-        buyer_phone: buyerPhone,
-        amount,
-        currency: 'TZS',
-      });
-    } catch (e) {
-      console.error('sonicpesaCreateOrder threw', e);
-      return res.status(503).json({
-        error: 'Seva ya malipo haipatikani kwa sasa. Jaribu tena baada ya dakika moja.',
-      });
-    }
-
-    if (!order.ok || !order.order_id) {
-      const errText = String(order.error || '');
-      const unreachable =
-        errText.toLowerCase().includes('unreachable') ||
-        errText.toLowerCase().includes('timed out');
-      return res.status(unreachable ? 503 : 502).json({
-        error: mapSonicInitiateError(errText, localPhone),
-      });
-    }
-
     const network = detectTzMobileNetwork(localPhone);
-    const payMethod = mobileMoneyMethodLabel(network);
-    const orderId = order.order_id;
 
-    try {
-      await withDbRetry(() =>
-        upsertPendingSonicpesaTransaction({
-          deviceId,
-          userName,
-          phone: localPhone,
-          amount,
-          planId: plan.id,
-          planName: plan.name,
-          orderId,
-          method: payMethod,
-          metadata: {
-            reference: order.reference,
-            initial_status: order.payment_status,
-            network,
-            planDays: plan.days,
-          },
-        })
-      );
-    } catch (dbErr) {
-      console.error('upsertPendingSonicpesaTransaction failed', dbErr);
-      return res.status(502).json({
-        error:
-          'Malipo yameanzishwa lakini seva haikuweza kuyahifadhi. Subiri uthibitisho wa malipo kwenye simu.',
-        orderId,
-        order_id: orderId,
-        planId: plan.id,
-        plan_id: plan.id,
-        recoverable: true,
-      });
-    }
-
-    res.status(201).json({
-      ok: true,
-      orderId,
-      order_id: orderId,
-      reference: order.reference ?? null,
+    // Queued so a rush cannot stampede SonicPesa. Every accepted checkout
+    // gets one PIN push; repeats of the same phone join that push.
+    const body = await acceptPaymentPush({
+      deviceId,
+      userName,
+      phone: localPhone,
+      buyerPhone,
+      buyerEmail,
       amount,
-      currency: 'TZS',
       planId: plan.id,
-      paymentStatus: order.payment_status ?? 'PENDING',
-      payment_status: order.payment_status ?? 'PENDING',
-      message: paymentPromptForPhone(localPhone),
+      planName: plan.name,
+      planDays: plan.days,
       network,
-      payMethod,
-      completed: false,
-      local: false,
+      method: mobileMoneyMethodLabel(network),
     });
+    res.status(201).json(body);
   })
 );
 
@@ -220,10 +166,11 @@ router.post(
       return res.status(400).json({ error: 'deviceId and orderId are required' });
     }
 
-    let tx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+    let tx = await findPaymentByOrderRef(orderId);
 
-    // Recover initiate-time DB failure: client has orderId but no local row yet.
-    if (!tx && sonicpesaConfigured() && !orderId.startsWith('local-')) {
+    // Recover initiate-time DB failure: client has a Sonic order id but no local row yet.
+    // Queued ids (q_…) are ours — never ask Sonic about them.
+    if (!tx && sonicpesaConfigured() && !orderId.startsWith('local-') && !orderId.startsWith('q_')) {
       try {
         const remote = await sonicpesaOrderStatus(orderId);
         if (remote.ok) {
@@ -265,6 +212,33 @@ router.post(
       return res.status(403).json({ error: 'device mismatch' });
     }
 
+    if ((tx.status === 'queued' || tx.status === 'dispatching') && !providerOrderId(tx)) {
+      return res.json({
+        ok: true,
+        paymentStatus: 'QUEUED',
+        payment_status: 'QUEUED',
+        completed: false,
+        failed: false,
+        pending: true,
+        queued: true,
+        message: queuedMessage(tx.status),
+      });
+    }
+
+    if (tx.status === 'failed' && !providerOrderId(tx)) {
+      const meta = tx.metadata && typeof tx.metadata === 'object' && !Array.isArray(tx.metadata) ? tx.metadata : {};
+      return res.json({
+        ok: true,
+        paymentStatus: 'FAILED',
+        payment_status: 'FAILED',
+        completed: false,
+        failed: true,
+        pending: false,
+        queued: false,
+        message: mapSonicInitiateError(meta.last_error, tx.phone),
+      });
+    }
+
     if (tx.status === 'completed' || orderId.startsWith('local-')) {
       if (tx.status === 'completed' && !orderId.startsWith('local-')) {
         try {
@@ -277,7 +251,7 @@ router.post(
               method: tx.method || 'Mobile Money',
               planId: tx.planId,
               planName: tx.planName,
-              providerRef: orderId,
+              providerRef: tx.orderId,
               metadata: { source: 'status-completed-repair' },
             })
           );
@@ -321,7 +295,37 @@ router.post(
       });
     }
 
-    const remote = await sonicpesaOrderStatus(orderId);
+    const providerId = providerOrderId(tx);
+    if (!providerId) {
+      return res.json({
+        ok: true,
+        paymentStatus: 'QUEUED',
+        payment_status: 'QUEUED',
+        completed: false,
+        failed: false,
+        pending: true,
+        queued: true,
+        message: queuedMessage('queued'),
+      });
+    }
+
+    // While many PIN pushes are waiting, don't spend the gateway quota on polls.
+    // The webhook (or a later poll) still completes the payment.
+    if (shouldDeferStatus()) {
+      return res.json({
+        ok: true,
+        paymentStatus: 'PENDING',
+        payment_status: 'PENDING',
+        completed: false,
+        failed: false,
+        pending: true,
+        queued: false,
+        message: 'Tunasubiri uthibitisho wa malipo…',
+      });
+    }
+
+    noteStatusCheck();
+    const remote = await sonicpesaOrderStatus(providerId);
     if (!remote.ok) {
       const rateLimited =
         remote.rate_limited ||
@@ -365,7 +369,7 @@ router.post(
             method: payMethod,
             planId: tx.planId,
             planName: tx.planName,
-            providerRef: orderId,
+            providerRef: tx.orderId,
             metadata: { sonicpesa_status: paymentStatus, reference: remote.reference },
           })
         );
@@ -392,7 +396,7 @@ router.post(
     }
 
     if (isSonicpesaFailure(paymentStatus)) {
-      await markPaymentFailed(orderId, { sonicpesa_status: paymentStatus });
+      await markPaymentFailed(tx.orderId, { sonicpesa_status: paymentStatus });
       return res.json({
         ok: true,
         paymentStatus,
@@ -448,7 +452,14 @@ router.post(
     const success = completedEvent || isSonicpesaSuccess(status);
     const failed = isSonicpesaFailure(status);
 
-    let tx = await prisma.paymentTransaction.findUnique({ where: { orderId } });
+    let tx = await findPaymentByOrderRef(orderId);
+    if (!tx) {
+      tx = await attachInflightSonicOrder({
+        sonicOrderId: orderId,
+        phone: webhookPhone,
+        amount: parsed.amount,
+      });
+    }
 
     // Orphan recovery: paid webhook for an order we never stored (initiate DB failure).
     if (!tx && success) {
@@ -514,7 +525,7 @@ router.post(
             method: payMethod,
             planId: tx.planId,
             planName: tx.planName,
-            providerRef: orderId,
+            providerRef: tx.orderId,
             metadata: {
               source: tx.status === 'completed' ? 'sonicpesa-webhook-repair' : 'sonicpesa-webhook',
               sonicpesa_status: status,
@@ -538,7 +549,7 @@ router.post(
     }
 
     if (failed) {
-      await markPaymentFailed(orderId, {
+      await markPaymentFailed(tx.orderId, {
         sonicpesa_status: status,
         sonicpesa_event: event,
         transid: transid || undefined,

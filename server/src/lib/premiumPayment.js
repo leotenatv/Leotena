@@ -10,6 +10,7 @@ const {
   sonicpesaOrderStatus,
 } = require('./sonicpesa');
 const { hasPremiumAccess } = require('./serialize');
+const { providerOrderId, getDispatchPressure } = require('./paymentDispatch');
 
 /** USSD push windows are short; abandoned rows must leave the poll queue. */
 const PENDING_ACTIVE_MS = 45 * 60 * 1000;
@@ -374,7 +375,10 @@ async function grantFromTx(tx, source) {
  * @returns {{ granted?: object, rate_limited?: boolean, expired?: boolean, failed?: boolean }}
  */
 async function settlePendingTxFromSonicpesa(tx, source, { expireIfStillPending = false } = {}) {
-  const remote = await sonicpesaOrderStatus(tx.orderId);
+  if (tx.status === 'queued' || tx.status === 'dispatching') return { queued: true };
+  const providerId = providerOrderId(tx);
+  if (!providerId) return { queued: true };
+  const remote = await sonicpesaOrderStatus(providerId);
   if (!remote.ok) {
     if (remote.rate_limited || isSonicpesaRateLimited(remote.error)) {
       return { rate_limited: true };
@@ -484,6 +488,12 @@ async function sweepPendingSonicpesaPayments() {
   if (!sonicpesaConfigured()) return;
   if (Date.now() < _sweepBackoffUntil) return;
 
+  // PIN pushes get the gateway first. A deep queue means skip status sweeps
+  // entirely; a short queue may settle one payment so confirmations still land.
+  const pressure = getDispatchPressure();
+  if (pressure.paused || pressure.waiting > 8) return;
+  const batch = pressure.waiting > 0 || pressure.active > 0 ? 1 : SWEEP_BATCH;
+
   const now = Date.now();
   const activeSince = new Date(now - PENDING_ACTIVE_MS);
   const repairSince = new Date(now - PENDING_REPAIR_MS);
@@ -492,19 +502,23 @@ async function sweepPendingSonicpesaPayments() {
   const active = await prisma.paymentTransaction.findMany({
     where: { status: 'pending', amount: { gt: 0 }, createdAt: { gt: activeSince } },
     orderBy: { createdAt: 'asc' },
-    take: SWEEP_BATCH,
+    take: batch,
   });
 
   // 2) Older pending that may already be SUCCESS on Sonic (admin used to fix these).
-  const stale = await prisma.paymentTransaction.findMany({
-    where: {
-      status: 'pending',
-      amount: { gt: 0 },
-      createdAt: { gt: repairSince, lte: activeSince },
-    },
-    orderBy: { createdAt: 'desc' },
-    take: Math.max(2, SWEEP_BATCH - active.length),
-  });
+  // Skipped while PIN pushes are still going out.
+  const stale =
+    batch === 1
+      ? []
+      : await prisma.paymentTransaction.findMany({
+          where: {
+            status: 'pending',
+            amount: { gt: 0 },
+            createdAt: { gt: repairSince, lte: activeSince },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: Math.max(2, SWEEP_BATCH - active.length),
+        });
 
   const queue = [...active, ...stale];
   for (const tx of queue) {

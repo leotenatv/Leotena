@@ -161,72 +161,29 @@ class _PremiumLockModalState extends State<PremiumLockModal> with TickerProvider
         _waitingHint = init.message.isNotEmpty ? init.message : PaymentConfig.paymentPromptFor(phone);
       });
 
-      const maxAttempts = 70;
-      for (var i = 0; i < maxAttempts; i++) {
-        // First check is immediate. Later gaps stay under Sonic's rate limit.
-        if (i > 0) {
-          await Future.delayed(i < 16 ? const Duration(milliseconds: 1200) : const Duration(seconds: 3));
-        }
-        if (!mounted || _page != 3 || _paymentSuccess) return;
-
-        try {
-          final status = await state.pollSonicPayment(
-            orderId: init.orderId,
-            userName: name,
-            phone: phone,
-            planId: pkg.id,
-          );
-          if (status.completed) {
-            if (context.read<AppState>().subscribed) {
-              await _markPaymentSuccess();
-              return;
-            }
-            if (mounted) {
-              setState(() => _waitingHint = 'Tunasubiri kuwasha ufikiaji wa Premium…');
-            }
-            continue;
-          }
-          if (status.failed) {
-            if (!mounted) return;
-            _waitSpin?.stop();
-            setState(() {
-              _paymentBusy = false;
-              _waitingHint = status.message?.isNotEmpty == true
-                  ? status.message!
-                  : 'Malipo hayajakamilika. Jaribu tena.';
-            });
-            return;
-          }
-        } on SonicpesaPaymentException catch (e) {
-          final code = e.statusCode;
-          if (code == 429 || code == 500 || code == 502 || code == 503 || code == 504) {
-            if (mounted) {
-              setState(() => _waitingHint = 'Seva inaendelea kuchakata malipo…');
-            }
-            await Future.delayed(const Duration(seconds: 5));
-            continue;
-          }
-          // Soft: keep waiting instead of hard-failing transient issues.
-          if (mounted) {
-            setState(() => _waitingHint = PaymentConfig.paymentPromptFor(phone));
-          }
-          continue;
-        }
-
-        if (!mounted) return;
-        setState(() {
-          _waitingHint = i < 8
-              ? PaymentConfig.paymentPromptFor(phone)
-              : 'Bado tunasubiri uthibitisho wa ${PaymentConfig.networkLabel(PaymentConfig.detectNetwork(phone))}…';
-        });
+      final wait = await state.awaitSonicPayment(
+        orderId: init.orderId,
+        alive: () => mounted && _page == 3 && !_paymentSuccess,
+        userName: name,
+        phone: phone,
+        planId: pkg.id,
+        onProgress: (message) {
+          if (mounted && _page == 3) setState(() => _waitingHint = message);
+        },
+      );
+      if (!mounted || _page != 3 || wait.cancelled || _paymentSuccess) return;
+      if (wait.status?.completed == true && context.read<AppState>().subscribed) {
+        await _markPaymentSuccess();
+        return;
       }
-
-      if (!mounted) return;
       _waitSpin?.stop();
       setState(() {
         _paymentBusy = false;
-        _waitingHint =
-            'Muda wa kusubiri malipo umeisha. Hakikisha umethibitisha PIN kwenye simu, kisha jaribu tena.';
+        _waitingHint = wait.status?.failed == true
+            ? (wait.status?.message?.isNotEmpty == true
+                ? wait.status!.message!
+                : 'Malipo hayajakamilika. Jaribu tena.')
+            : 'Muda wa kusubiri malipo umeisha. Hakikisha umethibitisha PIN kwenye simu, kisha jaribu tena.';
       });
     } on SonicpesaPaymentException catch (e) {
       if (!mounted) return;

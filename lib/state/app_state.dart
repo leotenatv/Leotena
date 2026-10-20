@@ -19,6 +19,14 @@ import '../models/models.dart';
 /// fetched from the backend on [bootstrap]; the admin panel is the only
 /// place that data is ever written. Entitlement (premium/expiry) is likewise
 /// server truth, refreshed via [refreshDeviceStatus].
+class SonicPaymentWait {
+  const SonicPaymentWait({this.status, this.timedOut = false, this.cancelled = false});
+
+  final SonicpesaStatusResult? status;
+  final bool timedOut;
+  final bool cancelled;
+}
+
 class AppState extends ChangeNotifier {
   final ApiClient _api = ApiClient();
   late final ContentRepository _repo = ContentRepository(_api);
@@ -148,6 +156,7 @@ class AppState extends ChangeNotifier {
     _refreshing = true;
     try {
       await _loadContent();
+      if (_autoRefreshTimer == null) _startAutoRefresh();
       await refreshDeviceStatus();
     } catch (_) {
       // Keep last known content on transient DNS / network failures.
@@ -176,6 +185,7 @@ class AppState extends ChangeNotifier {
     _schedule = results[2] as List<ScheduleItem>;
     final pkgs = results[3] as List<SubscriptionPackage>;
     if (pkgs.isNotEmpty) _packages = pkgs;
+    contentError = null;
   }
 
   Future<void> _loadPackageInfo() async {
@@ -429,6 +439,78 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
     }
     return status;
+  }
+
+  /// Waits out a busy PIN queue, then the USSD window.
+  /// Queue time does not consume the time the user has to enter the PIN.
+  Future<SonicPaymentWait> awaitSonicPayment({
+    required String orderId,
+    required bool Function() alive,
+    void Function(String message)? onProgress,
+    String? userName,
+    String? phone,
+    String? planId,
+  }) async {
+    var queueWaits = 0;
+    var pinWaits = 0;
+    while (alive() && queueWaits < 150 && pinWaits < 60) {
+      if (queueWaits + pinWaits > 0) {
+        final waitingOnQueue = pinWaits == 0 && queueWaits > 0;
+        await Future.delayed(
+          waitingOnQueue
+              ? const Duration(seconds: 2)
+              : (pinWaits < 12 ? const Duration(seconds: 3) : const Duration(seconds: 5)),
+        );
+      }
+      if (!alive()) break;
+      try {
+        final status = await pollSonicPayment(
+          orderId: orderId,
+          userName: userName ?? _userName,
+          phone: phone ?? _phoneNumber,
+          planId: planId ?? _pendingPackage?.id,
+        );
+        if (!alive()) break;
+        if (status.queued) {
+          queueWaits++;
+          onProgress?.call(
+            status.message != null && status.message!.trim().isNotEmpty
+                ? status.message!.trim()
+                : 'Ombi la PIN linatumwa kwa simu yako. Usifunge ukurasa.',
+          );
+          continue;
+        }
+        pinWaits++;
+        if (status.completed && subscribed) {
+          return SonicPaymentWait(status: status);
+        }
+        if (status.completed) {
+          onProgress?.call('Tunasubiri kuwasha ufikiaji wa Premium…');
+          continue;
+        }
+        if (status.failed) return SonicPaymentWait(status: status);
+        final prompt = (phone != null && phone.trim().isNotEmpty)
+            ? PaymentConfig.paymentPromptFor(phone)
+            : 'Angalia simu yako na thibitisha PIN.';
+        onProgress?.call(
+          pinWaits < 8
+              ? prompt
+              : 'Bado tunasubiri uthibitisho wa ${PaymentConfig.networkLabel(PaymentConfig.detectNetwork(phone ?? ''))}…',
+        );
+      } on SonicpesaPaymentException catch (e) {
+        final code = e.statusCode;
+        if (code == 429 || code == 500 || code == 502 || code == 503 || code == 504) {
+          onProgress?.call('Seva inaendelea kuchakata malipo…');
+          await Future.delayed(const Duration(seconds: 5));
+          continue;
+        }
+        onProgress?.call(
+          phone != null && phone.trim().isNotEmpty ? PaymentConfig.paymentPromptFor(phone) : e.message,
+        );
+      }
+    }
+    if (!alive()) return const SonicPaymentWait(cancelled: true);
+    return const SonicPaymentWait(timedOut: true);
   }
 
   // ---- Favorites ----

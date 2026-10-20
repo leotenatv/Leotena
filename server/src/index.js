@@ -6,6 +6,7 @@ const morgan = require('morgan');
 
 const { errorHandler } = require('./middleware/errorHandler');
 const { startPendingPaymentSweeper } = require('./lib/premiumPayment');
+const { startPaymentDispatcher } = require('./lib/paymentDispatch');
 
 const app = express();
 
@@ -35,5 +36,6 @@ app.use(errorHandler);
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
   console.log(`leotena-server listening on :${port}`);
+  startPaymentDispatcher();
   startPendingPaymentSweeper();
 });

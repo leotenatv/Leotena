@@ -25,13 +25,23 @@ function sonicHeaders() {
   return h;
 }
 
-/** Short cache so aggressive app polling does not burn Sonic rate limits. */
-const ORDER_STATUS_CACHE_TTL_MS = 2_500;
+/**
+ * Short cache so many devices polling the same order do not burn Sonic rate limits.
+ * Unique orders still each need a lookup; the payment dispatcher slows those
+ * while PIN pushes are in the queue.
+ */
+const ORDER_STATUS_CACHE_TTL_MS = 8_000;
 const _orderStatusCache = new Map();
+const _orderStatusInflight = new Map();
 
 function isSonicpesaRateLimited(errorOrMessage) {
   const s = String(errorOrMessage || '').toLowerCase();
-  return s.includes('too many attempts') || s.includes('too many requests') || s.includes('rate limit');
+  return (
+    s.includes('too many attempts') ||
+    s.includes('too many requests') ||
+    s.includes('rate limit') ||
+    s.includes('http 429')
+  );
 }
 
 function sonicpesaConfigured() {
@@ -278,15 +288,26 @@ async function sonicpesaPost(path, payload) {
   }
 }
 
+function pushFailure(error, httpStatus, raw) {
+  const err = String(error || 'SonicPesa did not create an order');
+  return {
+    ok: false,
+    error: err,
+    rate_limited: isSonicpesaRateLimited(err) || httpStatus === 429,
+    httpStatus: httpStatus || 0,
+    raw,
+  };
+}
+
 async function sonicpesaCreateOrder(input) {
   const posted = await sonicpesaPost('/api/v1/payment/create_order', input);
-  if (!posted.ok) return { ok: false, error: posted.error };
+  if (!posted.ok) return pushFailure(posted.error, 0);
 
   const { res, raw } = posted;
   const apiError = sonicpesaApiError(raw, res.status);
-  if (apiError && !res.ok) return { ok: false, error: apiError, raw };
+  if (apiError && !res.ok) return pushFailure(apiError, res.status, raw);
   if (!res.ok) {
-    return { ok: false, error: apiError || `SonicPesa HTTP ${res.status}`, raw };
+    return pushFailure(apiError || `SonicPesa HTTP ${res.status}`, res.status, raw);
   }
 
   const body = unwrapSonicpesaBody(raw);
@@ -294,6 +315,7 @@ async function sonicpesaCreateOrder(input) {
   const paymentStatus = readPaymentStatus(raw);
   const wrappedError = sonicpesaApiError(raw, 0);
 
+  const error = orderId && !wrappedError ? undefined : wrappedError || 'SonicPesa did not return an order id';
   return {
     ok: Boolean(orderId) && !wrappedError,
     order_id: orderId || undefined,
@@ -303,7 +325,8 @@ async function sonicpesaCreateOrder(input) {
     amount: Number(body.amount ?? input.amount),
     currency: String(body.currency ?? input.currency),
     buyer_phone: readBuyerPhone(body) || undefined,
-    error: orderId && !wrappedError ? undefined : wrappedError || 'SonicPesa did not return an order id',
+    error,
+    rate_limited: Boolean(error) && isSonicpesaRateLimited(error),
     raw,
   };
 }
@@ -317,6 +340,17 @@ async function sonicpesaOrderStatus(orderId) {
     return { ...cached.value, cached: true };
   }
 
+  const inflight = _orderStatusInflight.get(id);
+  if (inflight) return inflight;
+
+  const promise = fetchSonicpesaOrderStatus(id).finally(() => {
+    _orderStatusInflight.delete(id);
+  });
+  _orderStatusInflight.set(id, promise);
+  return promise;
+}
+
+async function fetchSonicpesaOrderStatus(id) {
   const posted = await sonicpesaPost('/api/v1/payment/order_status', { order_id: id });
   if (!posted.ok) {
     return { ok: false, error: posted.error, rate_limited: isSonicpesaRateLimited(posted.error) };
