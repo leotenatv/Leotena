@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../desktop/desktop_shell.dart';
+import '../desktop/tv_layout.dart';
 import '../state/app_state.dart';
 import 'force_update_screen.dart';
 import 'maintenance_screen.dart';
@@ -13,7 +15,8 @@ bool _isPhoneViewer() {
       defaultTargetPlatform == TargetPlatform.iOS;
 }
 
-/// Chooses RootShell, maintenance, or forced update from live admin settings.
+/// Chooses the phone shell, the Windows desktop shell, maintenance, or a
+/// forced update from live admin settings.
 class AppGate extends StatelessWidget {
   const AppGate({super.key});
 
@@ -25,6 +28,10 @@ class AppGate extends StatelessWidget {
     }
     if (_isPhoneViewer() && state.maintenanceMode) {
       return MaintenanceScreen(onRetry: state.refreshContent);
+    }
+    if (!kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows || TvLayout.active)) {
+      return const DesktopShell();
     }
     return const RootShell();
   }

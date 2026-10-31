@@ -1,7 +1,9 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:provider/provider.dart';
 
 import 'theme/app_theme.dart';
@@ -9,10 +11,22 @@ import 'theme/responsive.dart';
 import 'state/app_state.dart';
 import 'data/push_notifications.dart';
 import 'screens/splash_screen.dart';
+import 'security/integrity_gate.dart';
 import 'app_route_observer.dart';
+import 'desktop/tv_layout.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+    MediaKit.ensureInitialized();
+  }
+  await TvLayout.detect();
+  if (TvLayout.active) {
+    await SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+  }
   // Android 16 (targetSdk 36) enforces edge-to-edge with no opt-out.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -58,7 +72,7 @@ class LeotenaApp extends StatelessWidget {
             child: child ?? const SizedBox.shrink(),
           );
         },
-        home: const SplashScreen(),
+        home: const IntegrityGate(child: SplashScreen()),
       ),
     );
   }

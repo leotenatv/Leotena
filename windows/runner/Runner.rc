@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "Ghetto Developers" "\0"
-            VALUE "FileDescription", "leotena" "\0"
+            VALUE "FileDescription", "Leotena" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "leotena" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Ghetto Developers. All rights reserved." "\0"
             VALUE "OriginalFilename", "leotena.exe" "\0"
-            VALUE "ProductName", "leotena" "\0"
+            VALUE "ProductName", "Leotena" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

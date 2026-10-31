@@ -7,6 +7,8 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import '../models/models.dart';
 import '../player/playback_http_headers.dart';
+import '../player/playback_proxy_stub.dart'
+    if (dart.library.io) '../player/playback_proxy.dart';
 import '../player/stream_url_utils.dart';
 
 typedef StreamStateCallback = void Function({
@@ -82,6 +84,8 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
   bool get _isMediaStream => _looksLikeMediaUrl(widget.source.url);
   Widget? _cachedView;
   String? _cachedUrl;
+  String? _proxyOrigin;
+  bool _proxyReady = false;
 
   // Stable callback slots so the platform WebView is not rebuilt on every
   // parent setState (that rebuild cycle causes Huawei jank / "scratches").
@@ -92,6 +96,30 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
   late ValueChanged<String> _onLanguageChanged = widget.onLanguageChanged;
   late ValueChanged<String> _onError = widget.onError;
   late ValueChanged<bool> _onHumanCheck = widget.onHumanCheck;
+
+  @override
+  void initState() {
+    super.initState();
+    final windowsMedia = !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.windows &&
+        _isMediaStream;
+    if (!windowsMedia) {
+      _proxyReady = true;
+      return;
+    }
+    windowsPlaybackProxyOrigin().then((origin) {
+      if (!mounted) return;
+      setState(() {
+        _proxyOrigin = origin;
+        _proxyReady = true;
+        _cachedView = null;
+        _cachedUrl = null;
+      });
+    }).catchError((_) {
+      if (!mounted) return;
+      setState(() => _proxyReady = true);
+    });
+  }
 
   @override
   void didUpdateWidget(covariant WebStreamPlayer oldWidget) {
@@ -118,6 +146,10 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
         icon: Icons.link_off_rounded,
         message: 'Kituo hiki hakina URL ya video.',
       );
+    }
+
+    if (!_proxyReady) {
+      return const ColoredBox(color: Colors.black);
     }
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.linux) {
@@ -162,23 +194,28 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
       hardwareAcceleration: true,
       preferredContentMode: UserPreferredContentMode.MOBILE,
       cacheEnabled: true,
-      userAgent:
-          'Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      userAgent: playbackUserAgent,
     );
+
+    final playerPage = _proxyOrigin == null
+        ? null
+        : publishWindowsPlayer(_shakaHtml(widget.source, _proxyOrigin));
 
     return ColoredBox(
       color: Colors.black,
       child: InAppWebView(
-        key: ValueKey('${_isMediaStream ? 'media' : 'embed'}|$url'),
-        initialUrlRequest: _isMediaStream
-            ? null
-            : URLRequest(
+        key: ValueKey('${_isMediaStream ? 'media' : 'embed'}|$url|${playerPage ?? ''}'),
+        initialUrlRequest: !_isMediaStream
+            ? URLRequest(
                 url: WebUri(url),
-                headers: playbackHttpHeaders(url),
-              ),
-        initialData: _isMediaStream
+                headers: mergePlaybackHeaders(url),
+              )
+            : (playerPage != null
+                ? URLRequest(url: WebUri(playerPage))
+                : null),
+        initialData: _isMediaStream && playerPage == null
             ? InAppWebViewInitialData(
-                data: _shakaHtml(widget.source),
+                data: _shakaHtml(widget.source, null),
                 baseUrl: WebUri(_pageOrigin(url)),
                 historyUrl: WebUri(_pageOrigin(url)),
                 mimeType: 'text/html',
@@ -719,8 +756,9 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
     } catch (_) {}
   }
 
-  String _shakaHtml(PlaybackSource source) {
+  String _shakaHtml(PlaybackSource source, String? proxyOrigin) {
     final sourceJson = jsonEncode(source.url.trim());
+    final headersJson = jsonEncode(mergePlaybackHeaders(source.url.trim()));
     final clearKeys = <String, String>{};
     if (source.drm == ChannelDrm.clearkey) {
       final parts = source.clearKey.split(':');
@@ -732,6 +770,10 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
       }
     }
     final clearKeysJson = jsonEncode(clearKeys);
+    final proxyJs = jsonEncode(proxyOrigin ?? '');
+    final referrerMeta = proxyOrigin == null
+        ? ''
+        : '<meta name="referrer" content="no-referrer">';
 
     return '''
 <!doctype html>
@@ -739,6 +781,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  $referrerMeta
   <style>
     html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#000}
     video{position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#000;pointer-events:none}
@@ -749,6 +792,14 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
   <video id="video" autoplay playsinline webkit-playsinline muted poster=""></video>
   <script>
     const video = document.getElementById('video');
+    const requestHeaders = $headersJson;
+    const proxyOrigin = $proxyJs;
+    function proxify(uri) {
+      if (!proxyOrigin || !uri) return uri;
+      if (uri.indexOf(proxyOrigin) === 0) return uri;
+      if (uri.indexOf('http://') !== 0 && uri.indexOf('https://') !== 0) return uri;
+      return proxyOrigin + 'p?u=' + encodeURIComponent(uri);
+    }
     let player = null;
     let lastStateAt = 0;
     let started = false;
@@ -855,7 +906,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
       const chosen = pickClosestTrack(pool, target);
       if (!chosen) return false;
       try {
-        player.selectVariantTrack(chosen, /* clearBuffer */ true);
+        player.selectVariantTrack(chosen, /* clearBuffer */ false);
       } catch (_) {
         try { player.selectVariantTrack(chosen, false); } catch (__) { return false; }
       }
@@ -891,7 +942,7 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
 
     async function loadNative() {
       video.removeAttribute('src');
-      video.src = $sourceJson;
+      video.src = proxify($sourceJson);
       video.load();
       await unmutePlay();
       emitState(true);
@@ -912,6 +963,19 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
         if (!shaka.Player.isBrowserSupported()) throw new Error('Kifaa hiki hakitumii Shaka Player.');
         player = new shaka.Player();
         await player.attach(video);
+        player.getNetworkingEngine().registerRequestFilter(function(type, request) {
+          if (request.uris && request.uris.length) {
+            request.uris = request.uris.map(proxify);
+          }
+          var headers = requestHeaders || {};
+          Object.keys(headers).forEach(function(name) {
+            if (headers[name] == null) return;
+            var lower = String(name).toLowerCase();
+            if (lower === 'user-agent' || lower === 'connection') return;
+            if (proxyOrigin && (lower === 'origin' || lower === 'referer')) return;
+            request.headers[name] = String(headers[name]);
+          });
+        });
         player.addEventListener('error', event => {
           loadNative().catch(() => call('playerError', errorText(event)));
         });
@@ -933,18 +997,19 @@ class _WebStreamPlayerState extends State<WebStreamPlayer> {
           preferredAudioLanguage: 'sw',
           preferredTextLanguage: 'sw',
           streaming: {
-            rebufferingGoal: 1.0,
-            bufferingGoal: 4,
-            bufferBehind: 8,
+            rebufferingGoal: 2,
+            bufferingGoal: 12,
+            bufferBehind: 20,
             stallEnabled: true,
-            retryParameters: { maxAttempts: 6, baseDelay: 150, backoffFactor: 1.4, timeout: 15000 }
+            stallThreshold: 0.5,
+            retryParameters: { maxAttempts: 6, baseDelay: 200, backoffFactor: 1.5, timeout: 12000 }
           },
           manifest: {
             retryParameters: { maxAttempts: 6, baseDelay: 150, backoffFactor: 1.4, timeout: 12000 }
           },
           drm: { clearKeys: $clearKeysJson }
         });
-        await player.load($sourceJson);
+        await player.load(proxify($sourceJson));
         started = true;
         applyLanguage('sw');
         applyQuality('480p');
@@ -985,7 +1050,8 @@ String _pageOrigin(String raw) {
   if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
     return 'https://localhost/';
   }
-  return '${uri.scheme}://${uri.host}/';
+  final port = uri.hasPort ? ':${uri.port}' : '';
+  return '${uri.scheme}://${uri.host}$port/';
 }
 
 class _PlayerMessage extends StatelessWidget {

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
+import '../security/secure_http.dart';
+
 class ApiException implements Exception {
   final int statusCode;
   final String message;
@@ -85,7 +87,9 @@ class ApiClient {
 
   Future<_HostProbe> _probeHost(String host) async {
     try {
-      final res = await http.get(Uri.parse('$host/settings')).timeout(const Duration(seconds: 6));
+      final res = await secureHttpClient()
+          .get(Uri.parse('$host/settings'))
+          .timeout(const Duration(seconds: 6));
       if (isMissingApplication(res)) return _HostProbe.down;
       if (res.statusCode < 200 || res.statusCode >= 300) return _HostProbe.down;
       final body = jsonDecode(res.body);
@@ -153,14 +157,14 @@ class ApiClient {
   }
 
   Future<dynamic> get(String path) async {
-    final res = await _send(() => http.get(_uri(path)));
+    final res = await _send(() => secureHttpClient().get(_uri(path)));
     if (res.statusCode >= 200 && res.statusCode < 300) return _decode(res);
     _throwFor(res);
   }
 
   Future<dynamic> post(String path, {Object? body}) async {
     final res = await _send(
-      () => http.post(
+      () => secureHttpClient().post(
         _uri(path),
         headers: {'Content-Type': 'application/json'},
         body: body == null ? null : jsonEncode(body),
@@ -172,7 +176,7 @@ class ApiClient {
 
   Future<dynamic> put(String path, {Object? body}) async {
     final res = await _send(
-      () => http.put(
+      () => secureHttpClient().put(
         _uri(path),
         headers: {'Content-Type': 'application/json'},
         body: body == null ? null : jsonEncode(body),
